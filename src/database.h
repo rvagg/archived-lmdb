@@ -21,6 +21,7 @@ public:
   int OpenDatabase ();
   int PutToDatabase (MDB_val key, MDB_val value);
   int GetFromDatabase (MDB_val key, MDB_val& value);
+  int DeleteFromDatabase (MDB_val key);
   const char* Location() const;
 
   Database (const char* location);
@@ -39,8 +40,8 @@ private:
   NL_V8_METHOD( Close    )
   NL_V8_METHOD( Put      )
   NL_V8_METHOD( Get      )
-  /*
   NL_V8_METHOD( Delete   )
+  /*
   NL_V8_METHOD( Batch    )
   NL_V8_METHOD( Write    )
   */

@@ -109,7 +109,7 @@ DeleteWorker::DeleteWorker (
 DeleteWorker::~DeleteWorker () {}
 
 void DeleteWorker::Execute () {
-  //TODO: status = database->DeleteFromDatabase(options, key);
+  status = database->DeleteFromDatabase(key);
 }
 
 /** WRITE WORKER **/

@@ -4,6 +4,7 @@
       , "variables": {
             "lmdbversion": "20130601"
         }
+      , "defines": [ "MDB_DEBUG=1" ]
       , "type": "static_library"
       , "standalone_static_library": 1
       , 'direct_dependent_settings': {

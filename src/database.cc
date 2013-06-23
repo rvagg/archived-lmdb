@@ -79,6 +79,23 @@ int Database::GetFromDatabase (MDB_val key, MDB_val& value) {
   return rc;
 }
 
+int Database::DeleteFromDatabase (MDB_val key) {
+  int rc;
+  MDB_txn *txn;
+
+  rc = mdb_txn_begin(env, NULL, 0, &txn);
+  if (rc)
+    return rc;
+  rc = mdb_open(txn, NULL, 0, &dbi);
+  if (rc)
+    return rc;
+  rc = mdb_del(txn, dbi, &key, NULL);
+  if (rc)
+    return rc;
+  rc = mdb_txn_commit(txn);
+  return rc;
+}
+
 v8::Persistent<v8::Function> Database::constructor;
 
 v8::Handle<v8::Value> NLMDB (const v8::Arguments& args) {
@@ -106,12 +123,10 @@ void Database::Init () {
       v8::String::NewSymbol("get")
     , v8::FunctionTemplate::New(Get)->GetFunction()
   );
-  /*
   tpl->PrototypeTemplate()->Set(
       v8::String::NewSymbol("del")
     , v8::FunctionTemplate::New(Delete)->GetFunction()
   );
-  */
 
   constructor = v8::Persistent<v8::Function>::New(
       NL_NODE_ISOLATE_PRE
@@ -234,6 +249,31 @@ v8::Handle<v8::Value> Database::Get (const v8::Arguments& args) {
     , v8::Persistent<v8::Function>::New(NL_NODE_ISOLATE_PRE callback)
     , key
     , asBuffer
+    , keyBuffer
+  );
+  AsyncQueueWorker(worker);
+
+  return v8::Undefined();
+}
+
+v8::Handle<v8::Value> Database::Delete (const v8::Arguments& args) {
+  v8::HandleScope scope;
+
+  NL_METHOD_SETUP_COMMON(del, 1, 2)
+
+  NL_CB_ERR_IF_NULL_OR_UNDEFINED(args[0], key)
+
+  v8::Local<v8::Value> keyBufferV = args[0];
+  NL_STRING_OR_BUFFER_TO_MDVAL(key, keyBufferV, key)
+
+  v8::Persistent<v8::Value> keyBuffer = v8::Persistent<v8::Value>::New(
+      NL_NODE_ISOLATE_PRE
+      keyBufferV);
+
+  DeleteWorker* worker = new DeleteWorker(
+      database
+    , v8::Persistent<v8::Function>::New(NL_NODE_ISOLATE_PRE callback)
+    , key
     , keyBuffer
   );
   AsyncQueueWorker(worker);
