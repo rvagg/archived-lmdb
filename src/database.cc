@@ -161,7 +161,9 @@ int Database::DeleteFromDatabase (MDB_val key) {
 v8::Persistent<v8::Function> Database::constructor;
 
 v8::Handle<v8::Value> NLMDB (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
+
   return scope.Close(Database::NewInstance(args));
 }
 
@@ -189,6 +191,10 @@ void Database::Init () {
       v8::String::NewSymbol("del")
     , v8::FunctionTemplate::New(Delete)->GetFunction()
   );
+  tpl->PrototypeTemplate()->Set(
+      v8::String::NewSymbol("batch")
+    , v8::FunctionTemplate::New(Batch)->GetFunction()
+  );
 
   constructor = v8::Persistent<v8::Function>::New(
       NL_NODE_ISOLATE_PRE
@@ -196,7 +202,8 @@ void Database::Init () {
 }
 
 v8::Handle<v8::Value> Database::New (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
 
   if (args.Length() == 0) {
     NL_THROW_RETURN(constructor requires at least a location argument)
@@ -215,7 +222,8 @@ v8::Handle<v8::Value> Database::New (const v8::Arguments& args) {
 }
 
 v8::Handle<v8::Value> Database::NewInstance (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
 
   v8::Local<v8::Object> instance;
 
@@ -230,7 +238,8 @@ v8::Handle<v8::Value> Database::NewInstance (const v8::Arguments& args) {
 }
 
 v8::Handle<v8::Value> Database::Open (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
 
   NL_METHOD_SETUP_COMMON(open, 0, 1)
 
@@ -253,7 +262,8 @@ v8::Handle<v8::Value> Database::Open (const v8::Arguments& args) {
 }
 
 v8::Handle<v8::Value> Database::Close (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
 
   NL_METHOD_SETUP_COMMON_ONEARG(close)
 
@@ -268,7 +278,8 @@ v8::Handle<v8::Value> Database::Close (const v8::Arguments& args) {
 }
 
 v8::Handle<v8::Value> Database::Put (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
 
   NL_METHOD_SETUP_COMMON(put, 2, 3)
 
@@ -301,7 +312,8 @@ v8::Handle<v8::Value> Database::Put (const v8::Arguments& args) {
 }
 
 v8::Handle<v8::Value> Database::Get (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
 
   NL_METHOD_SETUP_COMMON(get, 1, 2)
 
@@ -329,7 +341,8 @@ v8::Handle<v8::Value> Database::Get (const v8::Arguments& args) {
 }
 
 v8::Handle<v8::Value> Database::Delete (const v8::Arguments& args) {
-  v8::HandleScope scope;
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
 
   NL_METHOD_SETUP_COMMON(del, 1, 2)
 

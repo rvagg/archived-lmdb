@@ -44,10 +44,7 @@ private:
   NL_V8_METHOD( Put      )
   NL_V8_METHOD( Get      )
   NL_V8_METHOD( Delete   )
-  /*
   NL_V8_METHOD( Batch    )
-  NL_V8_METHOD( Write    )
-  */
 };
 
 } // namespace nlmdb

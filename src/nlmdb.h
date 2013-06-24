@@ -61,21 +61,33 @@ static inline uint32_t UInt32OptionValue(
       : def;
 }
 
-#if NODE_MODULE_VERSION > 0x000B
-#  define NL_NODE_ISOLATE node::node_isolate
-#  define NL_NODE_ISOLATE_PRE node::node_isolate, 
-#  define NL_NODE_ISOLATE_POST , node::node_isolate 
+// V8 Isolate stuff introduced with V8 upgrade, see https://github.com/joyent/node/pull/5077
+#if (NODE_MODULE_VERSION > 0x000B)
+#  define NL_NODE_ISOLATE_GET  v8::Isolate::GetCurrent()
+#  define NL_NODE_ISOLATE_DECL v8::Isolate* isolate = NL_NODE_ISOLATE_GET;
+#  define NL_NODE_ISOLATE      isolate 
+#  define NL_NODE_ISOLATE_PRE  isolate, 
+#  define NL_NODE_ISOLATE_POST , isolate 
 #else
+#  define NL_NODE_ISOLATE_GET
+#  define NL_NODE_ISOLATE_DECL
 #  define NL_NODE_ISOLATE
 #  define NL_NODE_ISOLATE_PRE
 #  define NL_NODE_ISOLATE_POST
 #endif
 
-#define NL_SYMBOL(var, key)                                                    \
-  static const v8::Persistent<v8::String> var =                                \
-    v8::Persistent<v8::String>::New(                                           \
-      NL_NODE_ISOLATE_PRE v8::String::NewSymbol(#key)                          \
-    );
+#if (NODE_MODULE_VERSION > 0x000B)
+#  define NL_SYMBOL(var, key)                                                  \
+     static const v8::Persistent<v8::String> var =                             \
+       v8::Persistent<v8::String>::New(                                        \
+          NL_NODE_ISOLATE_GET, v8::String::NewSymbol(#key));
+#  define NL_HANDLESCOPE v8::HandleScope scope(NL_NODE_ISOLATE);
+#else
+#  define NL_SYMBOL(var, key)                                                  \
+     static const v8::Persistent<v8::String> var =                             \
+       v8::Persistent<v8::String>::New(v8::String::NewSymbol(#key));
+#  define NL_HANDLESCOPE v8::HandleScope scope;
+#endif
 
 #define NL_V8_METHOD(name)                                                     \
   static v8::Handle<v8::Value> name (const v8::Arguments& args);
