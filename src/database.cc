@@ -2,11 +2,32 @@
  * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
  */
 
+#include <sys/stat.h>
+#include <stdlib.h> // TODO: remove when we remove system()
+
 #include "database.h"
 #include "database_async.h"
-#include <stdlib.h>
+
+#include <iostream> 
 
 namespace nlmdb {
+
+inline const uv_statbuf_t* Stat (const char* path) {
+  uv_fs_t req;
+  int result = uv_fs_lstat(uv_default_loop(), &req, path, NULL);
+  if (result < 0)
+    return NULL;
+  return static_cast<const uv_statbuf_t*>(req.ptr);
+}
+
+inline bool IsDirectory (const uv_statbuf_t* stat) {
+  return (stat->st_mode & S_IFMT) == S_IFDIR;
+}
+
+inline bool MakeDirectory (const char* path) {
+  uv_fs_t req;
+  return uv_fs_mkdir(uv_default_loop(), &req, path, 511, NULL);
+}
 
 Database::Database (const char* location) : location(location) {
   //dbi = NULL;
@@ -22,43 +43,80 @@ const char* Database::Location() const {
   return location;
 }
 
-int Database::OpenDatabase () {
+md_status Database::OpenDatabase (bool createIfMissing, bool errorIfExists) {
+  md_status status;
+
+  // Emulate the behaviour of LevelDB create_if_missing & error_if_exists
+  // options, with an additional check for stat == directory
+  const uv_statbuf_t* stat = Stat(location);
+  if (stat == NULL) {
+    if (createIfMissing) {
+      status.code = MakeDirectory(location);
+      if (status.code)
+        return status;
+    } else {
+      status.error = std::string(location);
+      status.error += " does not exist (createIfMissing is false)";
+      return status;
+    }
+  } else {
+    if (!IsDirectory(stat)) {
+      status.error = std::string(location);
+      status.error += " exists and is not a directory";
+      return status;
+    }
+    if (errorIfExists) {
+      status.error = std::string(location);
+      status.error += " exists (errorIfExists is true)";
+      return status;
+    }
+  }
+
   int env_opt = 0;
   env_opt = MDB_NOSYNC;
   env_opt |= MDB_NOMETASYNC;
   //env_opt |= MDB_WRITEMAP;
-  int rc = mdb_env_create(&env);
-  if (rc)
-    return rc;
-  //rc = mdb_env_set_mapsize(env, 3 * 1024 * 1024 * 1024l);
-  if (rc)
-    return rc;
+  status.code = mdb_env_create(&env);
+  if (status.code)
+    return status;
+  //status.code = mdb_env_set_mapsize(env, 3 * 1024 * 1024 * 1024l);
+  if (status.code)
+    return status;
 
   //TODO: yuk
-  char cmd[200];
-  sprintf(cmd, "mkdir -p %s", location);
-  rc = system(cmd);
-  if (rc)
-    return rc;
+  if (createIfMissing) {
+    char cmd[200];
+    sprintf(cmd, "mkdir -p %s", location);
+    status.code = system(cmd);
+    if (status.code)
+      return status;
+  }
 
-  rc = mdb_env_open(env, location, env_opt, 0664);
-  return rc;
+  status.code = mdb_env_open(env, location, env_opt, 0664);
+  return status;
 }
 
 int Database::PutToDatabase (MDB_val key, MDB_val value) {
   int rc;
   MDB_txn *txn;
 
+  //std::cerr << "PUTTODB(" << (char*)key.mv_data << "(" << key.mv_size << ")," << (char*)value.mv_data << "(" << value.mv_size << "))" << std::endl;
+
   rc = mdb_txn_begin(env, NULL, 0, &txn);
   if (rc)
     return rc;
   rc = mdb_open(txn, NULL, 0, &dbi);
-  if (rc)
+  if (rc) {
+    mdb_txn_abort(txn);
     return rc;
+  }
   rc = mdb_put(txn, dbi, &key, &value, 0);
-  if (rc)
+  if (rc) {
+    mdb_txn_abort(txn);
     return rc;
+  }
   rc = mdb_txn_commit(txn);
+  //std::cerr << "FINISHED PUTTODB: " << rc << std::endl;
   return rc;
 }
 
@@ -70,11 +128,15 @@ int Database::GetFromDatabase (MDB_val key, MDB_val& value) {
   if (rc)
     return rc;
   rc = mdb_open(txn, NULL, 0, &dbi);
-  if (rc)
+  if (rc) {
+    mdb_txn_abort(txn);
     return rc;
+  }
   rc = mdb_get(txn, dbi, &key, &value);
-  if (rc)
+  if (rc) {
+    mdb_txn_abort(txn);
     return rc;
+  }
   rc = mdb_txn_commit(txn);
   return rc;
 }
@@ -170,11 +232,19 @@ v8::Handle<v8::Value> Database::NewInstance (const v8::Arguments& args) {
 v8::Handle<v8::Value> Database::Open (const v8::Arguments& args) {
   v8::HandleScope scope;
 
-  NL_METHOD_SETUP_COMMON_ONEARG(open)
+  NL_METHOD_SETUP_COMMON(open, 0, 1)
+
+  bool createIfMissing = BooleanOptionValueDefTrue(
+      optionsObj
+    , option_createIfMissing
+  );
+  bool errorIfExists = BooleanOptionValue(optionsObj, option_errorIfExists);
 
   OpenWorker* worker = new OpenWorker(
       database
     , v8::Persistent<v8::Function>::New(NL_NODE_ISOLATE_PRE callback)
+    , createIfMissing
+    , errorIfExists
   );
 
   AsyncQueueWorker(worker);
@@ -214,6 +284,8 @@ v8::Handle<v8::Value> Database::Put (const v8::Arguments& args) {
       v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE keyBufferV);
   v8::Persistent<v8::Value> valueBuffer =
       v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE valueBufferV);
+
+  //std::cerr << "PUT(" << (char*)key.mv_data << "(" << key.mv_size << ")," << (char*)value.mv_data << "(" << value.mv_size << "))" << std::endl;
 
   WriteWorker* worker  = new WriteWorker(
       database

@@ -1,7 +1,7 @@
-const tape = require('tape')
+const test = require('tap').test
     , lmdb = require('./')
 
-tape('lmdb', function (t) {
+test('lmdb', function (t) {
   var db = lmdb('./blerg')
   db.open(function (err) {
     t.notOk(err, 'no error')

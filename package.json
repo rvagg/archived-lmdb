@@ -12,14 +12,16 @@
         "bindings"        : "~1.1.0"
     }
   , "devDependencies" : {
-        "tape"            : "*"
+        "tap"               : "*"
+      , "rimraf"             : "*"
+      , "abstract-leveldown" : "*"
     }
   , "repository"      : {
         "type"            : "git"
       , "url"             : "https://github.com/rvagg/lmdb.git"
     }
   , "scripts"         : {
-        "test"            : "node ./test.js"
+        "test"            : "tap ./test.js test/*-test.js --stderr"
     }
   , "license"         : "MIT"
 }

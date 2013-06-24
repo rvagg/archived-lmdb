@@ -7,8 +7,13 @@
 
 #include <node.h>
 #include <node_buffer.h>
-
+#include <string>
 #include <lmdb.h>
+
+typedef struct md_status {
+  int code;
+  std::string error;
+} md_status;
 
 static inline char* FromV8String(v8::Local<v8::Value> from) {
   size_t sz_;
@@ -163,7 +168,8 @@ static inline void DisposeStringOrBufferFromMDVal(v8::Persistent<v8::Value> ptr
     to ## Str->WriteUtf8(                                                      \
         to ## Ch_                                                              \
       , -1                                                                     \
-      , NULL, v8::String::NO_NULL_TERMINATION                                  \
+      , NULL                                                                   \
+      , v8::String::NO_NULL_TERMINATION                                        \
     );                                                                         \
   }                                                                            \
   MDB_val to;                                                                  \

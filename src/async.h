@@ -25,7 +25,7 @@ public:
 protected:
   Database* database;
   v8::Persistent<v8::Function> callback;
-  int status;
+  md_status status;
   virtual void HandleOKCallback ();
   virtual void HandleErrorCallback ();
 };

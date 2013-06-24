@@ -9,6 +9,9 @@
 
 namespace nlmdb {
 
+NL_SYMBOL ( option_createIfMissing , createIfMissing ); // for open()
+NL_SYMBOL ( option_errorIfExists   , errorIfExists   ); // for open()
+
 NL_SYMBOL(option_asBuffer, asBuffer); // for get()
 
 v8::Handle<v8::Value> NLMDB (const v8::Arguments& args);
@@ -18,7 +21,7 @@ public:
   static void Init ();
   static v8::Handle<v8::Value> NewInstance (const v8::Arguments& args);
 
-  int OpenDatabase ();
+  md_status OpenDatabase (bool createIfMissing, bool errorIfExists);
   int PutToDatabase (MDB_val key, MDB_val value);
   int GetFromDatabase (MDB_val key, MDB_val& value);
   int DeleteFromDatabase (MDB_val key);

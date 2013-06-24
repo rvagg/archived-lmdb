@@ -19,14 +19,14 @@ AsyncWorker::AsyncWorker (
   , callback(callback)
 {
     request.data = this;
-    status = 0;
+    status.code = 0;
 };
 
 AsyncWorker::~AsyncWorker () {}
 
 void AsyncWorker::WorkComplete () {
   v8::HandleScope scope;
-  if (status == 0)
+  if (status.code == 0 && status.error.length() == 0)
     HandleOKCallback();
   else
     HandleErrorCallback();
@@ -39,9 +39,15 @@ void AsyncWorker::HandleOKCallback () {
 
 void AsyncWorker::HandleErrorCallback () {
   v8::HandleScope scope;
+  const char* err;
+  if (status.error.length() != 0)
+    err = status.error.c_str();
+  else
+    err = mdb_strerror(status.code);
+
   v8::Local<v8::Value> argv[] = {
       v8::Local<v8::Value>::New(
-        v8::Exception::Error(v8::String::New(mdb_strerror(status)))
+        v8::Exception::Error(v8::String::New(err))
       )
   };
   NL_RUN_CALLBACK(callback, argv, 1);

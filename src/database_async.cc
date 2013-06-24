@@ -17,13 +17,17 @@ namespace nlmdb {
 OpenWorker::OpenWorker (
     Database* database
   , v8::Persistent<v8::Function> callback
+  , bool createIfMissing
+  , bool errorIfExists
 ) : AsyncWorker(database, callback)
+  , createIfMissing(createIfMissing)
+  , errorIfExists(errorIfExists)
 { };
 
 OpenWorker::~OpenWorker () { }
 
 void OpenWorker::Execute () {
-  status = database->OpenDatabase();
+  status = database->OpenDatabase(createIfMissing, errorIfExists);
 }
 
 /** CLOSE WORKER **/
@@ -78,7 +82,7 @@ ReadWorker::ReadWorker (
 ReadWorker::~ReadWorker () {}
 
 void ReadWorker::Execute () {
-  status = database->GetFromDatabase(key, value);
+  status.code = database->GetFromDatabase(key, value);
 }
 
 void ReadWorker::HandleOKCallback () {
@@ -109,7 +113,7 @@ DeleteWorker::DeleteWorker (
 DeleteWorker::~DeleteWorker () {}
 
 void DeleteWorker::Execute () {
-  status = database->DeleteFromDatabase(key);
+  status.code = database->DeleteFromDatabase(key);
 }
 
 /** WRITE WORKER **/
@@ -128,7 +132,7 @@ WriteWorker::WriteWorker (
 WriteWorker::~WriteWorker () {}
 
 void WriteWorker::Execute () {
-  status = database->PutToDatabase(key, value);
+  status.code = database->PutToDatabase(key, value);
 }
 
 void WriteWorker::WorkComplete () {
