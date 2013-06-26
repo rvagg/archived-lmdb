@@ -7,6 +7,7 @@
 
 #include "database.h"
 #include "database_async.h"
+#include "batch.h"
 
 #include <iostream> 
 
@@ -117,6 +118,35 @@ int Database::PutToDatabase (MDB_val key, MDB_val value) {
   }
   rc = mdb_txn_commit(txn);
   //std::cerr << "FINISHED PUTTODB: " << rc << std::endl;
+  return rc;
+}
+
+int Database::PutToDatabase (std::vector< BatchOp* >* operations) {
+  int rc;
+  MDB_txn *txn;
+
+  rc = mdb_txn_begin(env, NULL, 0, &txn);
+  if (rc)
+    return rc;
+  rc = mdb_open(txn, NULL, 0, &dbi);
+  if (rc) {
+    mdb_txn_abort(txn);
+    return rc;
+  }
+
+  for (std::vector< BatchOp* >::iterator it = operations->begin()
+      ; it != operations->end()
+      ; it++) {
+
+    rc = (*it)->Execute(txn, dbi);
+    if (rc) {
+      mdb_txn_abort(txn);
+      return rc;
+    }
+  }
+
+  rc = mdb_txn_commit(txn);
+
   return rc;
 }
 
@@ -362,6 +392,64 @@ v8::Handle<v8::Value> Database::Delete (const v8::Arguments& args) {
     , keyBuffer
   );
   AsyncQueueWorker(worker);
+
+  return v8::Undefined();
+}
+
+/* property key & value strings for elements of the array sent to batch() */
+NL_SYMBOL ( str_key   , key   );
+NL_SYMBOL ( str_value , value );
+NL_SYMBOL ( str_type  , type  );
+NL_SYMBOL ( str_del   , del   );
+NL_SYMBOL ( str_put   , put   );
+
+v8::Handle<v8::Value> Database::Batch (const v8::Arguments& args) {
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
+
+  if ((args.Length() == 0 || args.Length() == 1) && !args[0]->IsArray()) {
+    v8::Local<v8::Object> optionsObj;
+    if (args.Length() > 0 && args[0]->IsObject()) {
+      optionsObj = v8::Local<v8::Object>::Cast(args[0]);
+    }
+    return scope.Close(WriteBatch::NewInstance(args.This(), optionsObj));
+  }
+
+  NL_METHOD_SETUP_COMMON(batch, 1, 2)
+
+  v8::Local<v8::Array> array = v8::Local<v8::Array>::Cast(args[0]);
+  WriteBatch* batch = new WriteBatch(database);
+
+  for (unsigned int i = 0; i < array->Length(); i++) {
+    if (!array->Get(i)->IsObject())
+      continue;
+
+    v8::Local<v8::Object> obj = v8::Local<v8::Object>::Cast(array->Get(i));
+
+    NL_CB_ERR_IF_NULL_OR_UNDEFINED(obj->Get(str_type), type)
+
+    v8::Local<v8::Value> keyBuffer = obj->Get(str_key);
+    NL_CB_ERR_IF_NULL_OR_UNDEFINED(keyBuffer, key)
+
+    if (obj->Get(str_type)->StrictEquals(str_del)) {
+      NL_STRING_OR_BUFFER_TO_MDVAL(key, keyBuffer, key)
+      batch->Delete(v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE keyBuffer), key);
+    } else if (obj->Get(str_type)->StrictEquals(str_put)) {
+      v8::Local<v8::Value> valueBuffer = obj->Get(str_value);
+      NL_CB_ERR_IF_NULL_OR_UNDEFINED(valueBuffer, value)
+      NL_STRING_OR_BUFFER_TO_MDVAL(key, keyBuffer, key)
+      NL_STRING_OR_BUFFER_TO_MDVAL(value, valueBuffer, value)
+
+      batch->Put(
+          v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE keyBuffer)
+        , key
+        , v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE valueBuffer)
+        , value
+      );
+    }
+  }
+
+  batch->Write(callback);
 
   return v8::Undefined();
 }

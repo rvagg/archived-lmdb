@@ -131,8 +131,8 @@ static inline uint32_t UInt32OptionValue(
   if (args.Length() == 0) {                                                    \
     NL_THROW_RETURN(name() requires a callback argument)                       \
   }                                                                            \
-  nlmdb::Database* database =                                              \
-    node::ObjectWrap::Unwrap<nlmdb::Database>(args.This());                \
+  nlmdb::Database* database =                                                  \
+    node::ObjectWrap::Unwrap<nlmdb::Database>(args.This());                    \
   v8::Local<v8::Object> optionsObj;                                            \
   v8::Local<v8::Function> callback;                                            \
   if (optionPos == -1 && args[callbackPos]->IsFunction()) {                    \

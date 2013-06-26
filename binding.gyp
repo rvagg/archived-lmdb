@@ -9,6 +9,8 @@
           , "src/async.cc"
           , "src/database.cc"
           , "src/database_async.cc"
+          , "src/batch.cc"
+          , "src/batch_async.cc"
         ]
     }]
 }

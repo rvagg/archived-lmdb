@@ -4,11 +4,13 @@
 
 #include "nlmdb.h"
 #include "database.h"
+#include "batch.h"
 
 namespace nlmdb {
 
 void Init (v8::Handle<v8::Object> target) {
   Database::Init();
+  WriteBatch::Init();
 
   v8::Local<v8::Function> nlmdb =
       v8::FunctionTemplate::New(NLMDB)->GetFunction();

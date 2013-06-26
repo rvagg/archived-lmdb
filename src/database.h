@@ -5,6 +5,8 @@
 #ifndef NL_DATABASE_H
 #define NL_DATABASE_H
 
+#include <vector>
+
 #include "nlmdb.h"
 
 namespace nlmdb {
@@ -16,6 +18,35 @@ NL_SYMBOL(option_asBuffer, asBuffer); // for get()
 
 v8::Handle<v8::Value> NLMDB (const v8::Arguments& args);
 
+struct Reference {
+  v8::Persistent<v8::Value> ptr;
+  MDB_val val;
+  Reference(v8::Persistent<v8::Value> ptr, MDB_val val) :
+      ptr(ptr)
+    , val(val) { };
+};
+
+static inline void ClearReferences (std::vector<Reference>* references) {
+  for (std::vector<Reference>::iterator it = references->begin()
+      ; it != references->end()
+      ; ) {
+    DisposeStringOrBufferFromMDVal(it->ptr, it->val);
+    it = references->erase(it);
+  }
+  delete references;
+}
+
+/* abstract */ class BatchOp {
+ public:
+  BatchOp (v8::Persistent<v8::Value> keyPtr, MDB_val key);
+  virtual ~BatchOp ();
+  virtual int Execute (MDB_txn *txn, MDB_dbi dbi) =0;
+
+ protected:
+  v8::Persistent<v8::Value> keyPtr;
+  MDB_val key;
+};
+
 class Database : public node::ObjectWrap {
 public:
   static void Init ();
@@ -23,6 +54,7 @@ public:
 
   md_status OpenDatabase (bool createIfMissing, bool errorIfExists);
   int PutToDatabase (MDB_val key, MDB_val value);
+  int PutToDatabase (std::vector< BatchOp* >* operations);
   int GetFromDatabase (MDB_val key, MDB_val& value);
   int DeleteFromDatabase (MDB_val key);
   const char* Location() const;
