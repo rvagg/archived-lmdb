@@ -94,9 +94,17 @@ md_status Database::OpenDatabase (OpenOptions options) {
   }
 
   int env_opt = 0;
-  env_opt = MDB_NOSYNC;
-  env_opt |= MDB_NOMETASYNC;
-  //env_opt |= MDB_WRITEMAP;
+  if (!options.sync)
+    env_opt |= MDB_NOSYNC;
+  if (options.readOnly)
+    env_opt |= MDB_RDONLY;
+  if (options.writeMap)
+    env_opt |= MDB_WRITEMAP;
+  if (!options.metaSync)
+    env_opt |= MDB_NOMETASYNC;
+  if (options.mapAsync)
+    env_opt |= MDB_MAPASYNC;
+
   status.code = mdb_env_create(&env);
   if (status.code)
     return status;
@@ -327,6 +335,21 @@ v8::Handle<v8::Value> Database::Open (const v8::Arguments& args) {
     , option_mapSize
     , DEFAULT_MAPSIZE
   );
+  options.sync = DEFAULT_SYNC
+      ? BooleanOptionValueDefTrue(optionsObj, option_sync)
+      : BooleanOptionValue(optionsObj, option_sync);
+  options.readOnly = DEFAULT_READONLY
+      ? BooleanOptionValueDefTrue(optionsObj, option_readOnly)
+      : BooleanOptionValue(optionsObj, option_readOnly);
+  options.writeMap = DEFAULT_WRITEMAP
+      ? BooleanOptionValueDefTrue(optionsObj, option_writeMap)
+      : BooleanOptionValue(optionsObj, option_writeMap);
+  options.metaSync = DEFAULT_METASYNC
+      ? BooleanOptionValueDefTrue(optionsObj, option_metaSync)
+      : BooleanOptionValue(optionsObj, option_metaSync);
+  options.mapAsync = DEFAULT_MAPASYNC
+      ? BooleanOptionValueDefTrue(optionsObj, option_mapAsync)
+      : BooleanOptionValue(optionsObj, option_mapAsync);
 
   OpenWorker* worker = new OpenWorker(
       database
