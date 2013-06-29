@@ -17,16 +17,14 @@ public:
   OpenWorker (
       Database* database
     , v8::Persistent<v8::Function> callback
-    , bool createIfMissing
-    , bool errorIfExists
+    , OpenOptions options
   );
 
   virtual ~OpenWorker ();
   virtual void Execute ();
 
 private:
-  bool createIfMissing;
-  bool errorIfExists;
+  OpenOptions options;
 };
 
 class CloseWorker : public AsyncWorker {
@@ -88,6 +86,7 @@ public:
 
   virtual ~DeleteWorker ();
   virtual void Execute ();
+  virtual void WorkComplete ();
 
 protected:
 };

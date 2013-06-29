@@ -11,6 +11,8 @@
           , "src/database_async.cc"
           , "src/batch.cc"
           , "src/batch_async.cc"
+          , "src/iterator.cc"
+          , "src/iterator_async.cc"
         ]
     }]
 }

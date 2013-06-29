@@ -53,7 +53,7 @@ WriteBatch::WriteBatch (Database* database) : database(database) {
 }
 
 WriteBatch::~WriteBatch () {
-  std::cerr << "~WriteBatch()\n";
+  //std::cerr << "~WriteBatch()\n";
   Clear();
   delete operations;
 }

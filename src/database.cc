@@ -2,14 +2,17 @@
  * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
  */
 
+#include <node.h>
 #include <sys/stat.h>
 #include <stdlib.h> // TODO: remove when we remove system()
 
 #include "database.h"
 #include "database_async.h"
 #include "batch.h"
+#include "iterator.h"
 
 #include <iostream> 
+#include <string.h>
 
 namespace nlmdb {
 
@@ -32,6 +35,8 @@ inline bool MakeDirectory (const char* path) {
 
 Database::Database (const char* location) : location(location) {
   //dbi = NULL;
+  currentIteratorId = 0;
+  pendingCloseWorker = NULL;
 };
 
 Database::~Database () {
@@ -44,14 +49,29 @@ const char* Database::Location() const {
   return location;
 }
 
-md_status Database::OpenDatabase (bool createIfMissing, bool errorIfExists) {
+void Database::ReleaseIterator (uint32_t id) {
+  // called each time an Iterator is End()ed, in the main thread
+  // we have to remove our reference to it and if it's the last iterator
+  // we have to invoke a pending CloseWorker if there is one
+  // if there is a pending CloseWorker it means that we're waiting for
+  // iterators to end before we can close them
+  iterators.erase(id);
+  //std::cerr << "ReleaseIterator: " << iterators.size() << std::endl;
+  if (iterators.size() == 0 && pendingCloseWorker != NULL) {
+    //std::cerr << "pendingCloseWorker RUNNING\n";
+    AsyncQueueWorker((AsyncWorker*)pendingCloseWorker);
+    pendingCloseWorker = NULL;
+  }
+}
+
+md_status Database::OpenDatabase (OpenOptions options) {
   md_status status;
 
   // Emulate the behaviour of LevelDB create_if_missing & error_if_exists
   // options, with an additional check for stat == directory
   const uv_statbuf_t* stat = Stat(location);
   if (stat == NULL) {
-    if (createIfMissing) {
+    if (options.createIfMissing) {
       status.code = MakeDirectory(location);
       if (status.code)
         return status;
@@ -66,7 +86,7 @@ md_status Database::OpenDatabase (bool createIfMissing, bool errorIfExists) {
       status.error += " exists and is not a directory";
       return status;
     }
-    if (errorIfExists) {
+    if (options.errorIfExists) {
       status.error = std::string(location);
       status.error += " exists (errorIfExists is true)";
       return status;
@@ -80,12 +100,13 @@ md_status Database::OpenDatabase (bool createIfMissing, bool errorIfExists) {
   status.code = mdb_env_create(&env);
   if (status.code)
     return status;
-  //status.code = mdb_env_set_mapsize(env, 3 * 1024 * 1024 * 1024l);
+
+  status.code = mdb_env_set_mapsize(env, options.mapSize);
   if (status.code)
     return status;
 
   //TODO: yuk
-  if (createIfMissing) {
+  if (options.createIfMissing) {
     char cmd[200];
     sprintf(cmd, "mkdir -p %s", location);
     status.code = system(cmd);
@@ -188,6 +209,23 @@ int Database::DeleteFromDatabase (MDB_val key) {
   return rc;
 }
 
+int Database::NewIterator (MDB_txn **txn, MDB_cursor **cursor) {
+  int rc;
+
+  rc = mdb_txn_begin(env, NULL, 0, txn);
+  //std::cerr << "opened transaction! " << cursor << ", " << strerror(rc) << std::endl;
+  if (rc)
+    return rc;
+  rc = mdb_open(*txn, NULL, 0, &dbi);
+  if (rc) {
+    mdb_txn_abort(*txn);
+    return rc;
+  }
+  rc = mdb_cursor_open(*txn, dbi, cursor);
+  //std::cerr << "opened cursor! " << cursor << ", " << strerror(rc) << std::endl;
+  return rc;
+}
+
 v8::Persistent<v8::Function> Database::constructor;
 
 v8::Handle<v8::Value> NLMDB (const v8::Arguments& args) {
@@ -225,6 +263,10 @@ void Database::Init () {
       v8::String::NewSymbol("batch")
     , v8::FunctionTemplate::New(Batch)->GetFunction()
   );
+  tpl->PrototypeTemplate()->Set(
+      v8::String::NewSymbol("iterator")
+    , v8::FunctionTemplate::New(Iterator)->GetFunction()
+  );
 
   constructor = v8::Persistent<v8::Function>::New(
       NL_NODE_ISOLATE_PRE
@@ -248,7 +290,7 @@ v8::Handle<v8::Value> Database::New (const v8::Arguments& args) {
   Database* obj = new Database(location);
   obj->Wrap(args.This());
 
-  return args.This();
+  return scope.Close(args.This());
 }
 
 v8::Handle<v8::Value> Database::NewInstance (const v8::Arguments& args) {
@@ -273,22 +315,28 @@ v8::Handle<v8::Value> Database::Open (const v8::Arguments& args) {
 
   NL_METHOD_SETUP_COMMON(open, 0, 1)
 
-  bool createIfMissing = BooleanOptionValueDefTrue(
+  OpenOptions options;
+
+  options.createIfMissing = BooleanOptionValueDefTrue(
       optionsObj
     , option_createIfMissing
   );
-  bool errorIfExists = BooleanOptionValue(optionsObj, option_errorIfExists);
+  options.errorIfExists = BooleanOptionValue(optionsObj, option_errorIfExists);
+  options.mapSize = UInt32OptionValue(
+      optionsObj
+    , option_mapSize
+    , DEFAULT_MAPSIZE
+  );
 
   OpenWorker* worker = new OpenWorker(
       database
     , v8::Persistent<v8::Function>::New(NL_NODE_ISOLATE_PRE callback)
-    , createIfMissing
-    , errorIfExists
+    , options
   );
 
   AsyncQueueWorker(worker);
 
-  return v8::Undefined();
+  return scope.Close(v8::Undefined());
 }
 
 v8::Handle<v8::Value> Database::Close (const v8::Arguments& args) {
@@ -302,9 +350,49 @@ v8::Handle<v8::Value> Database::Close (const v8::Arguments& args) {
     , v8::Persistent<v8::Function>::New(NL_NODE_ISOLATE_PRE callback)
   );
 
-  AsyncQueueWorker(worker);
+  if (database->iterators.size() > 0) {
+    // yikes, we still have iterators open! naughty naughty.
+    // we have to queue up a CloseWorker and manually close each of them.
+    // the CloseWorker will be invoked once they are all cleaned up
+    database->pendingCloseWorker = worker;
 
-  return v8::Undefined();
+  //std::cerr << "--------------------------------------------------------\n";
+    for (
+        std::map< uint32_t, v8::Persistent<v8::Object> >::iterator it
+            = database->iterators.begin()
+      ; it != database->iterators.end()
+      ; ++it) {
+  //std::cerr << "Releasing iterator...\n";
+
+        // for each iterator still open, first check if it's already in
+        // the process of ending (ended==true means an async End() is
+        // in progress), if not, then we call End() with an empty callback
+        // function and wait for it to hit ReleaseIterator() where our
+        // CloseWorker will be invoked
+
+        nlmdb::Iterator* iterator
+          = node::ObjectWrap::Unwrap<nlmdb::Iterator>(it->second);
+
+        if (!iterator->ended) {
+          v8::Local<v8::Function> end =
+              v8::Local<v8::Function>::Cast(it->second->Get(
+                  v8::String::NewSymbol("end")));
+          v8::Local<v8::Value> argv[] = {
+              v8::FunctionTemplate::New()->GetFunction() // empty callback
+          };
+          v8::TryCatch try_catch;
+          end->Call(it->second, 1, argv);
+          if (try_catch.HasCaught()) {
+            node::FatalException(try_catch);
+          }
+        }
+    }
+  //std::cerr << "++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+  } else {
+    AsyncQueueWorker(worker);
+  }
+
+  return scope.Close(v8::Undefined());
 }
 
 v8::Handle<v8::Value> Database::Put (const v8::Arguments& args) {
@@ -338,7 +426,7 @@ v8::Handle<v8::Value> Database::Put (const v8::Arguments& args) {
   );
   AsyncQueueWorker(worker);
 
-  return v8::Undefined();
+  return scope.Close(v8::Undefined());
 }
 
 v8::Handle<v8::Value> Database::Get (const v8::Arguments& args) {
@@ -367,7 +455,7 @@ v8::Handle<v8::Value> Database::Get (const v8::Arguments& args) {
   );
   AsyncQueueWorker(worker);
 
-  return v8::Undefined();
+  return scope.Close(v8::Undefined());
 }
 
 v8::Handle<v8::Value> Database::Delete (const v8::Arguments& args) {
@@ -393,7 +481,7 @@ v8::Handle<v8::Value> Database::Delete (const v8::Arguments& args) {
   );
   AsyncQueueWorker(worker);
 
-  return v8::Undefined();
+  return scope.Close(v8::Undefined());
 }
 
 /* property key & value strings for elements of the array sent to batch() */
@@ -452,6 +540,38 @@ v8::Handle<v8::Value> Database::Batch (const v8::Arguments& args) {
   batch->Write(callback);
 
   return v8::Undefined();
+}
+
+v8::Handle<v8::Value> Database::Iterator (const v8::Arguments& args) {
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
+
+  Database* database = node::ObjectWrap::Unwrap<Database>(args.This());
+
+  v8::Local<v8::Object> optionsObj;
+  if (args.Length() > 0 && args[0]->IsObject()) {
+    optionsObj = v8::Local<v8::Object>::Cast(args[0]);
+  }
+
+  // each iterator gets a unique id for this Database, so we can
+  // easily store & lookup on our `iterators` map
+  uint32_t id = database->currentIteratorId++;
+  v8::TryCatch try_catch;
+  v8::Handle<v8::Object> iterator = Iterator::NewInstance(
+      args.This()
+    , v8::Number::New(id)
+    , optionsObj
+  );
+  if (try_catch.HasCaught()) {
+    node::FatalException(try_catch);
+  }
+
+  // register our iterator
+  database->iterators[id] =
+      v8::Persistent<v8::Object>::New(
+          node::ObjectWrap::Unwrap<nlmdb::Iterator>(iterator)->handle_);
+
+  return scope.Close(iterator);
 }
 
 } // namespace nlmdb

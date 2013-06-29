@@ -17,17 +17,15 @@ namespace nlmdb {
 OpenWorker::OpenWorker (
     Database* database
   , v8::Persistent<v8::Function> callback
-  , bool createIfMissing
-  , bool errorIfExists
+  , OpenOptions options
 ) : AsyncWorker(database, callback)
-  , createIfMissing(createIfMissing)
-  , errorIfExists(errorIfExists)
+  , options(options)
 { };
 
 OpenWorker::~OpenWorker () { }
 
 void OpenWorker::Execute () {
-  status = database->OpenDatabase(createIfMissing, errorIfExists);
+  status = database->OpenDatabase(options);
 }
 
 /** CLOSE WORKER **/
@@ -120,6 +118,18 @@ void DeleteWorker::Execute () {
   status.code = database->DeleteFromDatabase(key);
 }
 
+void DeleteWorker::WorkComplete () {
+  NL_NODE_ISOLATE_DECL
+  NL_HANDLESCOPE
+
+  if (status.code == MDB_NOTFOUND || (status.code == 0 && status.error.length() == 0))
+    HandleOKCallback();
+  else
+    HandleErrorCallback();
+
+  callback.Dispose(NL_NODE_ISOLATE);
+}
+
 /** WRITE WORKER **/
 WriteWorker::WriteWorker (
     Database* database
@@ -143,70 +153,5 @@ void WriteWorker::WorkComplete () {
   DisposeStringOrBufferFromMDVal(valuePtr, value);
   IOWorker::WorkComplete();
 }
-
-/** BATCH WORKER **/
-/*
-BatchWorker::BatchWorker (
-    Database* database
-  , v8::Persistent<v8::Function> callback
-  , leveldb::WriteBatch* batch
-  , std::vector<Reference>* references
-  , bool sync
-) : AsyncWorker(database, callback)
-  , batch(batch)
-  , references(references)
-{
-  options = new leveldb::WriteOptions();
-  options->sync = sync;
-};
-
-BatchWorker::~BatchWorker () {
-  ClearReferences(references);
-  delete options;
-}
-
-void BatchWorker::Execute () {
-  status = database->WriteBatchToDatabase(options, batch);
-}
-
-/** APPROXIMATE SIZE WORKER **/
-/*
-ApproximateSizeWorker::ApproximateSizeWorker (
-    Database* database
-  , v8::Persistent<v8::Function> callback
-  , MDB_val start
-  , MDB_val end
-  , v8::Persistent<v8::Value> startPtr
-  , v8::Persistent<v8::Value> endPtr
-) : AsyncWorker(database, callback)
-  , range(start, end)
-  , startPtr(startPtr)
-  , endPtr(endPtr)
-{};
-
-ApproximateSizeWorker::~ApproximateSizeWorker () {}
-
-void ApproximateSizeWorker::Execute () {
-  size = database->ApproximateSizeFromDatabase(&range);
-}
-
-void ApproximateSizeWorker::WorkComplete() {
-  DisposeStringOrBufferFromMDVal(startPtr, range.start);
-  DisposeStringOrBufferFromMDVal(endPtr, range.limit);
-  AsyncWorker::WorkComplete();
-}
-
-void ApproximateSizeWorker::HandleOKCallback () {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
-
-  v8::Local<v8::Value> returnValue = v8::Number::New((double) size);
-  v8::Local<v8::Value> argv[] = {
-      v8::Local<v8::Value>::New(v8::Null())
-    , returnValue
-  };
-  NL_RUN_CALLBACK(callback, argv, 2);
-}
-*/
 
 } // namespace nlmdb
