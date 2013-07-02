@@ -104,6 +104,8 @@ md_status Database::OpenDatabase (OpenOptions options) {
     env_opt |= MDB_NOMETASYNC;
   if (options.mapAsync)
     env_opt |= MDB_MAPASYNC;
+  if (options.fixedMap)
+    env_opt |= MDB_FIXEDMAP;
 
   status.code = mdb_env_create(&env);
   if (status.code)
@@ -350,6 +352,9 @@ v8::Handle<v8::Value> Database::Open (const v8::Arguments& args) {
   options.mapAsync = DEFAULT_MAPASYNC
       ? BooleanOptionValueDefTrue(optionsObj, option_mapAsync)
       : BooleanOptionValue(optionsObj, option_mapAsync);
+  options.fixedMap = DEFAULT_FIXEDMAP
+      ? BooleanOptionValueDefTrue(optionsObj, option_fixedMap)
+      : BooleanOptionValue(optionsObj, option_fixedMap);
 
   OpenWorker* worker = new OpenWorker(
       database

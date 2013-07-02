@@ -18,7 +18,7 @@ NL_SYMBOL ( option_errorIfExists   , errorIfExists   ); // for open()
 NL_SYMBOL ( option_mapSize         , mapSize         ); // for open()
 #define DEFAULT_MAPSIZE 10 << 20 // 10 MB
 NL_SYMBOL ( option_sync            , sync            ); // for open()
-#define DEFAULT_SYNC false
+#define DEFAULT_SYNC true
 NL_SYMBOL ( option_readOnly        , readOnly        ); // for open()
 #define DEFAULT_READONLY false
 NL_SYMBOL ( option_writeMap        , writeMap        ); // for open()
@@ -27,6 +27,8 @@ NL_SYMBOL ( option_metaSync        , metaSync        ); // for open()
 #define DEFAULT_METASYNC true
 NL_SYMBOL ( option_mapAsync        , mapAsync        ); // for open()
 #define DEFAULT_MAPASYNC false
+NL_SYMBOL ( option_fixedMap        , fixedMap        ); // for open()
+#define DEFAULT_FIXEDMAP false
 NL_SYMBOL ( option_asBuffer        , asBuffer        ); // for get()
 
 typedef struct OpenOptions {
@@ -38,6 +40,7 @@ typedef struct OpenOptions {
   bool     writeMap;
   bool     metaSync;
   bool     mapAsync;
+  bool     fixedMap;
 } OpenOptions;
 
 v8::Handle<v8::Value> NLMDB (const v8::Arguments& args);
