@@ -1,8 +1,7 @@
 LMDB for Node.js
 ================
 
-A Low-level, [LevelDOWN](https://github.com/rvagg/node-leveldown)-compatible, Node.js LMDB binding
---------------------------------------------------------------------------------------------------
+**A Low-level, [LevelDOWN](https://github.com/rvagg/node-leveldown)-compatible, Node.js LMDB binding**
 
 [![NPM](https://nodei.co/npm/lmdb.png?stars&downloads)](https://nodei.co/npm/lmdb/) [![NPM](https://nodei.co/npm-dl/lmdb.png)](https://nodei.co/npm/lmdb/)
 
