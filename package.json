@@ -1,10 +1,11 @@
 {
     "name"            : "lmdb"
-  , "description"     : "nothing to see here yet, please move along"
+  , "description"     : "A Low-level, LevelDOWN-compatible, Node.js LMDB binding"
   , "contributors"    : [
         "Rod Vagg <r@va.gg> (https://github.com/rvagg)"
     ]
   , "keywords": [
+        "lmdb", "mdb", "level", "leveldown"
     ]
   , "version"         : "0.1.0"
   , "main"            : "lmdb.js"
