@@ -5,14 +5,18 @@ LMDB for Node.js
 
 [![NPM](https://nodei.co/npm/lmdb.png?stars&downloads)](https://nodei.co/npm/lmdb/) [![NPM](https://nodei.co/npm-dl/lmdb.png)](https://nodei.co/npm/lmdb/)
 
-LMDB for Node.js, is primarily designed to serve as a back-end to **[LevelUP](https://github.com/rvagg/node-levelup)**, it is strongly recommended that you use LevelUP in preference to LMDB directly.
+"LMDB" is *[Symas Lightning Memory-Mapped Database](http://symas.com/mdb/)*.
+
+> LMDB is an ultra-fast, ultra-compact key-value embedded data store developed by Symas for the OpenLDAP Project. It uses memory-mapped files, so it has the read performance of a pure in-memory database while still offering the persistence of standard disk-based databases, and is only limited to the size of the virtual address space, (it is not limited to the size of physical RAM). Note: LMDB was originally called MDB, but was renamed to avoid confusion with other software associated with the name MDB 
+
+LMDB for Node.js, is primarily designed to serve as a back-end to **[LevelUP](https://github.com/rvagg/node-levelup)**, it is strongly recommended that you use LevelUP in preference to this library directly.
 
 <a name="platforms"></a>
 Tested & supported platforms
 ----------------------------
 
   * **Linux**
-  * *Others... testing son*
+  * *Others... testing soon*
 
 <a name="api"></a>
 ## API
