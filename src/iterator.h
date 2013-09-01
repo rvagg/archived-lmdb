@@ -6,23 +6,17 @@
 #define NL_ITERATOR_H
 
 #include <node.h>
+#include <nan.h>
 
 #include "nlmdb.h"
 #include "database.h"
-#include "async.h"
 
 namespace nlmdb {
 
-NL_SYMBOL ( option_start         , start         );
-NL_SYMBOL ( option_end           , end           );
-NL_SYMBOL ( option_limit         , limit         );
-NL_SYMBOL ( option_reverse       , reverse       );
-NL_SYMBOL ( option_keys          , keys          );
-NL_SYMBOL ( option_values        , values        );
-NL_SYMBOL ( option_keyAsBuffer   , keyAsBuffer   );
-NL_SYMBOL ( option_valueAsBuffer , valueAsBuffer );
+class Database;
+class AsyncWorker;
 
-v8::Handle<v8::Value> CreateIterator (const v8::Arguments& args);
+NAN_METHOD(CreateIterator);
 
 class Iterator : public node::ObjectWrap {
 public:
@@ -76,11 +70,9 @@ public:
 private:
   int          GetIterator ();
 
-  static v8::Persistent<v8::Function> constructor;
-
-  NL_V8_METHOD( New  )
-  NL_V8_METHOD( Next )
-  NL_V8_METHOD( End  )
+  static NAN_METHOD(New);
+  static NAN_METHOD(Next);
+  static NAN_METHOD(End);
 };
 
 } // namespace nlmdb

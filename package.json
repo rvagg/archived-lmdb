@@ -9,19 +9,20 @@
   , "version"         : "0.0.3"
   , "main"            : "lmdb.js"
   , "dependencies"    : {
-        "bindings"        : "~1.1.0"
+        "bindings"           : "~1.1.0"
+      , "nan"                : "~0.3.1"
     }
   , "devDependencies" : {
-        "tap"               : "*"
+        "tap"                : "*"
       , "rimraf"             : "*"
       , "abstract-leveldown" : "*"
     }
   , "repository"      : {
-        "type"            : "git"
-      , "url"             : "https://github.com/rvagg/lmdb.git"
+        "type"               : "git"
+      , "url"                : "https://github.com/rvagg/lmdb.git"
     }
   , "scripts"         : {
-        "test"            : "tap ./test.js test/*-test.js --stderr"
+        "test"               : "tap ./test.js test/*-test.js --stderr"
     }
   , "license"         : "MIT"
 }

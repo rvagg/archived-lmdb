@@ -2,7 +2,8 @@ const test       = require('tap').test
     , lmdb       = require('../')
     , testCommon = require('abstract-leveldown/testCommon')
       // 1MBish
-    , bigBlob    = Array.apply(null, Array(1024 * 100)).map(function () { return 'aaaaaaaaaa' }).join('')
+    , bigBlob    = require('crypto').randomBytes(1000000)
+    //, bigBlob    = Array.apply(null, Array(1024 * 100)).map(function () { return 'aaaaaaaaaa' }).join('')
 
 test('setUp common', testCommon.setUp)
 

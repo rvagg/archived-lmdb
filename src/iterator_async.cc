@@ -4,7 +4,6 @@
 
 #include <node.h>
 #include <node_buffer.h>
-#include <iostream>
 
 #include "database.h"
 #include "nlmdb.h"
@@ -17,7 +16,7 @@ namespace nlmdb {
 
 NextWorker::NextWorker (
     Iterator* iterator
-  , v8::Persistent<v8::Function> callback
+  , NanCallback *callback
   , void (*localCallback)(Iterator*)
 ) : AsyncWorker(NULL, callback)
   , iterator(iterator)
@@ -28,52 +27,42 @@ NextWorker::~NextWorker () {}
 
 void NextWorker::Execute () {
 //std::cerr << "NextWorker::Execute: " << iterator->id << std::endl;
-  status.code = iterator->Next(&key, &value);
+  SetStatus(iterator->Next(&key, &value));
+//std::cerr << "NextWorker::Execute done: " << iterator->id << std::endl;
 }
 
 void NextWorker::WorkComplete () {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
-  /*
-std::cerr << "NextWorker::WorkComplete: " << iterator->id <<
-  ", status.code=" << status.code << std::endl;
-  */
+  NanScope();
+
   if (status.code == MDB_NOTFOUND || (status.code == 0 && status.error.length() == 0))
     HandleOKCallback();
   else
     HandleErrorCallback();
-  callback.Dispose(NL_NODE_ISOLATE);
 }
 
 void NextWorker::HandleOKCallback () {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+  NanScope();
 
 //std::cerr << "NextWorker::HandleOKCallback: " << iterator->id << std::endl;
-//std::cerr << "Read [" << (char*)key.mv_data << "]=[" << (char*)value.mv_data << "]\n";
+//std::cerr << "Read [" << std::string((char*)key.mv_data, key.mv_size) << "]=[" << std::string((char*)value.mv_data, value.mv_size) << "]\n";
 
   if (status.code == MDB_NOTFOUND) {
     //std::cerr << "run callback, ended MDB_NOTFOUND\n";
     localCallback(iterator);
-    NL_RUN_CALLBACK(callback, NULL, 0);
-    scope.Close(v8::Undefined());
+    callback->Run(0, NULL);
     return;
   }
 
   v8::Local<v8::Value> returnKey;
   if (iterator->keyAsBuffer) {
-    returnKey = v8::Local<v8::Value>::New(
-      node::Buffer::New((char*)key.mv_data, key.mv_size)->handle_
-    );
+    returnKey = NanNewBufferHandle((char*)key.mv_data, key.mv_size);
   } else {
     returnKey = v8::String::New((char*)key.mv_data, key.mv_size);
   }
 
   v8::Local<v8::Value> returnValue;
   if (iterator->valueAsBuffer) {
-    returnValue = v8::Local<v8::Value>::New(
-      node::Buffer::New((char*)value.mv_data, value.mv_size)->handle_
-    );
+    returnValue = NanNewBufferHandle((char*)value.mv_data, value.mv_size);
   } else {
     returnValue = v8::String::New((char*)value.mv_data, value.mv_size);
   }
@@ -87,16 +76,15 @@ void NextWorker::HandleOKCallback () {
     , returnKey
     , returnValue
   };
-  NL_RUN_CALLBACK(callback, argv, 3);
 
-  scope.Close(v8::Undefined());
+  callback->Run(3, argv);
 }
 
 /** END WORKER **/
 
 EndWorker::EndWorker (
     Iterator* iterator
-  , v8::Persistent<v8::Function> callback
+  , NanCallback *callback
 ) : AsyncWorker(NULL, callback)
   , iterator(iterator)
 {executed=false;};
@@ -112,7 +100,7 @@ void EndWorker::Execute () {
 void EndWorker::HandleOKCallback () {
   //std::cerr << "EndWorker::HandleOKCallback: " << iterator->id << std::endl;
   iterator->Release();
-  NL_RUN_CALLBACK(callback, NULL, 0);
+  callback->Run(0, NULL);
 }
 
 } // namespace nlmdb

@@ -3,7 +3,7 @@
  */
 
 #include <node.h>
-#include <iostream>
+
 #include "nlmdb.h"
 #include "database.h"
 #include "batch_async.h"
@@ -11,15 +11,28 @@
 
 namespace nlmdb {
 
-BatchOp::BatchOp (v8::Persistent<v8::Value> keyPtr, MDB_val key)
-  : keyPtr(keyPtr), key(key) {}
+BatchOp::BatchOp (v8::Local<v8::Object> &keyHandle, MDB_val key) : key(key) {
+  NanScope();
 
-BatchOp::~BatchOp () {
-  DisposeStringOrBufferFromMDVal(keyPtr, key);
+  v8::Local<v8::Object> obj = v8::Object::New();
+  obj->Set(NanSymbol("key"), keyHandle);
+  NanAssignPersistent(v8::Object, persistentHandle, obj);
 }
 
-BatchDel::BatchDel (v8::Persistent<v8::Value> keyPtr, MDB_val key)
-  : BatchOp(keyPtr, key) {}
+BatchOp::~BatchOp () {
+  NanScope();
+
+  v8::Local<v8::Object> handle = NanPersistentToLocal(persistentHandle);
+  v8::Local<v8::Object> keyHandle =
+      handle->Get(NanSymbol("key")).As<v8::Object>();
+  DisposeStringOrBufferFromMDVal(keyHandle, key);
+
+  if (!persistentHandle.IsEmpty())
+    NanDispose(persistentHandle);
+}
+
+BatchDel::BatchDel (v8::Local<v8::Object> &keyHandle, MDB_val key)
+  : BatchOp(keyHandle, key) {}
 
 BatchDel::~BatchDel () {}
 
@@ -28,24 +41,30 @@ int BatchDel::Execute (MDB_txn *txn, MDB_dbi dbi) {
 }
 
 BatchPut::BatchPut (
-    v8::Persistent<v8::Value> keyPtr
+    v8::Local<v8::Object> &keyHandle
   , MDB_val key
-  , v8::Persistent<v8::Value> valuePtr
+  , v8::Local<v8::Object> &valueHandle
   , MDB_val value
-) : BatchOp(keyPtr, key)
-  , valuePtr(valuePtr)
+) : BatchOp(keyHandle, key)
   , value(value)
-{}
+{
+    v8::Local<v8::Object> handle = NanPersistentToLocal(persistentHandle);
+    handle->Set(NanSymbol("value"), valueHandle);
+}
 
 BatchPut::~BatchPut () {
-  DisposeStringOrBufferFromMDVal(valuePtr, value);
+  NanScope();
+
+  v8::Local<v8::Object> handle = NanPersistentToLocal(persistentHandle);
+  v8::Local<v8::Object> valueHandle =
+      handle->Get(NanSymbol("value")).As<v8::Object>();
+
+  DisposeStringOrBufferFromMDVal(valueHandle, value);
 }
 
 int BatchPut::Execute (MDB_txn *txn, MDB_dbi dbi) {
   return mdb_put(txn, dbi, &key, &value, 0);
 }
-
-v8::Persistent<v8::Function> WriteBatch::constructor;
 
 WriteBatch::WriteBatch (Database* database) : database(database) {
   operations = new std::vector<BatchOp*>;
@@ -53,23 +72,19 @@ WriteBatch::WriteBatch (Database* database) : database(database) {
 }
 
 WriteBatch::~WriteBatch () {
-  //std::cerr << "~WriteBatch()\n";
   Clear();
   delete operations;
 }
 
 void WriteBatch::Write (v8::Local<v8::Function> callback) {
-  NL_NODE_ISOLATE_DECL
+  NanScope();
 
   written = true;
 
   if (operations->size() > 0) {
-    AsyncQueueWorker(new BatchWriteWorker(
+    NanAsyncQueueWorker(new BatchWriteWorker(
         this
-      , v8::Persistent<v8::Function>::New(
-            NL_NODE_ISOLATE_PRE
-            callback
-        )
+      , new NanCallback(callback)
     ));
   } else {
     NL_RUN_CALLBACK(callback, NULL, 0);
@@ -77,16 +92,16 @@ void WriteBatch::Write (v8::Local<v8::Function> callback) {
 }
 
 void WriteBatch::Put (
-      v8::Persistent<v8::Value> keyPtr
+      v8::Local<v8::Object> &keyHandle
     , MDB_val key
-    , v8::Persistent<v8::Value> valuePtr
+    , v8::Local<v8::Object> &valueHandle
     , MDB_val value) {
 
-  operations->push_back(new BatchPut(keyPtr, key, valuePtr, value));
+  operations->push_back(new BatchPut(keyHandle, key, valueHandle, value));
 }
 
-void WriteBatch::Delete (v8::Persistent<v8::Value> keyPtr, MDB_val key) {
-  operations->push_back(new BatchDel(keyPtr, key));
+void WriteBatch::Delete (v8::Local<v8::Object> &keyHandle, MDB_val key) {
+  operations->push_back(new BatchDel(keyHandle, key));
 }
 
 void WriteBatch::Clear () {
@@ -99,36 +114,23 @@ void WriteBatch::Clear () {
   }
 }
 
+static v8::Persistent<v8::FunctionTemplate> writebatch_constructor;
+
 void WriteBatch::Init () {
-  NL_NODE_ISOLATE_DECL
+  NanScope();
 
   v8::Local<v8::FunctionTemplate> tpl = v8::FunctionTemplate::New(WriteBatch::New);
-  tpl->SetClassName(v8::String::NewSymbol("Batch"));
+  NanAssignPersistent(v8::FunctionTemplate, writebatch_constructor, tpl);
+  tpl->SetClassName(NanSymbol("Batch"));
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
-  tpl->PrototypeTemplate()->Set(
-      v8::String::NewSymbol("put")
-    , v8::FunctionTemplate::New(WriteBatch::Put)->GetFunction()
-  );
-  tpl->PrototypeTemplate()->Set(
-      v8::String::NewSymbol("del")
-    , v8::FunctionTemplate::New(WriteBatch::Del)->GetFunction()
-  );
-  tpl->PrototypeTemplate()->Set(
-      v8::String::NewSymbol("clear")
-    , v8::FunctionTemplate::New(WriteBatch::Clear)->GetFunction()
-  );
-  tpl->PrototypeTemplate()->Set(
-      v8::String::NewSymbol("write")
-    , v8::FunctionTemplate::New(WriteBatch::Write)->GetFunction()
-  );
-  constructor = v8::Persistent<v8::Function>::New(
-      NL_NODE_ISOLATE_PRE
-      tpl->GetFunction());
+  NODE_SET_PROTOTYPE_METHOD(tpl, "put", WriteBatch::Put);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "del", WriteBatch::Del);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "clear", WriteBatch::Clear);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "write", WriteBatch::Write);
 }
 
-v8::Handle<v8::Value> WriteBatch::New (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(WriteBatch::New) {
+  NanScope();
 
   Database* database = node::ObjectWrap::Unwrap<Database>(args[0]->ToObject());
   v8::Local<v8::Object> optionsObj;
@@ -140,38 +142,39 @@ v8::Handle<v8::Value> WriteBatch::New (const v8::Arguments& args) {
   WriteBatch* batch = new WriteBatch(database);
   batch->Wrap(args.This());
 
-  return args.This();
+  NanReturnValue(args.This());
 }
 
 v8::Handle<v8::Value> WriteBatch::NewInstance (
         v8::Handle<v8::Object> database
-      , v8::Handle<v8::Object> optionsObj
+      , v8::Handle<v8::Object> optionsObj = v8::Handle<v8::Object>()
     ) {
 
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+  NanScope();
 
   v8::Local<v8::Object> instance;
 
+  v8::Local<v8::FunctionTemplate> constructorHandle =
+      NanPersistentToLocal(writebatch_constructor);
+
   if (optionsObj.IsEmpty()) {
-    v8::Handle<v8::Value> argv[1] = { database };
-    instance = constructor->NewInstance(1, argv);
+    v8::Handle<v8::Value> argv[] = { database };
+    instance = constructorHandle->GetFunction()->NewInstance(1, argv);
   } else {
-    v8::Handle<v8::Value> argv[2] = { database, optionsObj };
-    instance = constructor->NewInstance(2, argv);
+    v8::Handle<v8::Value> argv[] = { database, optionsObj };
+    instance = constructorHandle->GetFunction()->NewInstance(2, argv);
   }
 
-  return scope.Close(instance);
+  return instance;
 }
 
-v8::Handle<v8::Value> WriteBatch::Put (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(WriteBatch::Put) {
+  NanScope();
 
   WriteBatch* batch = ObjectWrap::Unwrap<WriteBatch>(args.Holder());
 
   if (batch->written) {
-    NL_THROW_RETURN(write() already called on this batch)
+    return NanThrowError("write() already called on this batch");
   }
 
   v8::Handle<v8::Function> callback; // purely for the error macros
@@ -179,76 +182,71 @@ v8::Handle<v8::Value> WriteBatch::Put (const v8::Arguments& args) {
   NL_CB_ERR_IF_NULL_OR_UNDEFINED(args[0], key)
   NL_CB_ERR_IF_NULL_OR_UNDEFINED(args[1], value)
 
-  v8::Local<v8::Value> keyPtr = args[0];
-  v8::Local<v8::Value> valuePtr = args[1];
-  NL_STRING_OR_BUFFER_TO_MDVAL(key, keyPtr, key)
-  NL_STRING_OR_BUFFER_TO_MDVAL(value, valuePtr, value)
+  v8::Local<v8::Object> keyHandle = args[0].As<v8::Object>();
+  v8::Local<v8::Object> valueHandle = args[1].As<v8::Object>();
+  NL_STRING_OR_BUFFER_TO_MDVAL(key, keyHandle, key)
+  NL_STRING_OR_BUFFER_TO_MDVAL(value, valueHandle, value)
 
-  batch->Put(
-      v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE keyPtr)
-    , key
-    , v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE valuePtr)
-    , value
-  );
+  batch->Put(keyHandle, key, valueHandle, value);
 
-  return scope.Close(args.Holder());
+  NanReturnValue(args.Holder());
 }
 
-v8::Handle<v8::Value> WriteBatch::Del (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(WriteBatch::Del) {
+  NanScope();
 
   WriteBatch* batch = ObjectWrap::Unwrap<WriteBatch>(args.Holder());
 
   if (batch->written) {
-    NL_THROW_RETURN(write() already called on this batch)
+    return NanThrowError("write() already called on this batch");
   }
 
   v8::Handle<v8::Function> callback; // purely for the error macros
 
   NL_CB_ERR_IF_NULL_OR_UNDEFINED(args[0], key)
 
-  v8::Local<v8::Value> keyPtr = args[0];
-  NL_STRING_OR_BUFFER_TO_MDVAL(key, keyPtr, key)
+  v8::Local<v8::Object> keyHandle = args[0].As<v8::Object>();
+  NL_STRING_OR_BUFFER_TO_MDVAL(key, keyHandle, key)
 
-  batch->Delete(
-      v8::Persistent<v8::Value>::New(NL_NODE_ISOLATE_PRE keyPtr)
-    , key
-  );
-  return scope.Close(args.Holder());
+  batch->Delete(keyHandle, key);
+
+  NanReturnValue(args.Holder());
 }
 
-v8::Handle<v8::Value> WriteBatch::Clear (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(WriteBatch::Clear) {
+  NanScope();
 
   WriteBatch* batch = ObjectWrap::Unwrap<WriteBatch>(args.Holder());
 
   if (batch->written) {
-    NL_THROW_RETURN(write() already called on this batch)
+    return NanThrowError("write() already called on this batch");
   }
 
   batch->Clear();
-  return scope.Close(args.Holder());
+
+  NanReturnValue(args.Holder());
 }
 
-v8::Handle<v8::Value> WriteBatch::Write (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(WriteBatch::Write) {
+  NanScope();
 
   WriteBatch* batch = ObjectWrap::Unwrap<WriteBatch>(args.Holder());
 
+  if (args.Length() == 0 || !args[0]->IsFunction()) {
+    return NanThrowError("write() requires a callback argument");
+  }
+
   if (batch->written) {
-    NL_THROW_RETURN(write() already called on this batch)
+    return NanThrowError("write() already called on this batch");
   }
   
   if (args.Length() == 0) {
-    NL_THROW_RETURN(write() requires a callback argument)
+    return NanThrowError("write() requires a callback argument");
   }
 
-  batch->Write(v8::Local<v8::Function>::Cast(args[0]));
+  batch->Write(args[0].As<v8::Function>());
 
-  return v8::Undefined();
+  NanReturnUndefined();
 }
 
 } // namespace nlmdb

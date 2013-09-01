@@ -9,17 +9,15 @@ namespace nlmdb {
 
 BatchWriteWorker::BatchWriteWorker (
     WriteBatch* batch
-  , v8::Persistent<v8::Function> callback
+  , NanCallback *callback
 ) : AsyncWorker(batch->database, callback)
   , batch(batch)
 {};
 
-BatchWriteWorker::~BatchWriteWorker () {
-  //delete batch;
-}
+BatchWriteWorker::~BatchWriteWorker () { }
 
 void BatchWriteWorker::Execute () {
-  status.code = database->PutToDatabase(batch->operations);
+  SetStatus(database->PutToDatabase(batch->operations));
 }
 
 } // namespace nlmdb

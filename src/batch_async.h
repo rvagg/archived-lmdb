@@ -6,6 +6,7 @@
 #define NL_BATCH_ASYNC_H
 
 #include <node.h>
+#include <nan.h>
 
 #include "async.h"
 #include "batch.h"
@@ -15,10 +16,7 @@ namespace nlmdb {
 
 class BatchWriteWorker : public AsyncWorker {
 public:
-  BatchWriteWorker (
-      WriteBatch* batch
-    , v8::Persistent<v8::Function> callback
-  );
+  BatchWriteWorker (WriteBatch* batch, NanCallback *callback);
 
   virtual ~BatchWriteWorker ();
   virtual void Execute ();

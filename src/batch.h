@@ -14,7 +14,7 @@ namespace nlmdb {
 
 class BatchDel : public BatchOp {
  public:
-  BatchDel (v8::Persistent<v8::Value> keyPtr, MDB_val key);
+  BatchDel (v8::Local<v8::Object> &keyHandle, MDB_val key);
   virtual ~BatchDel ();
   virtual int Execute (MDB_txn *txn, MDB_dbi dbi);
 };
@@ -22,17 +22,16 @@ class BatchDel : public BatchOp {
 class BatchPut : public BatchOp {
 public:
   BatchPut (
-      v8::Persistent<v8::Value> keyPtr
+      v8::Local<v8::Object> &keyHandle
     , MDB_val key
-    , v8::Persistent<v8::Value> valuePtr
+    , v8::Local<v8::Object> &valueHandle
     , MDB_val value
   );
 
   virtual ~BatchPut ();
   virtual int Execute (MDB_txn *txn, MDB_dbi dbi);
 
- protected:
-  v8::Persistent<v8::Value> valuePtr;
+protected:
   MDB_val value;
 };
 
@@ -48,12 +47,12 @@ class WriteBatch : public node::ObjectWrap {
   ~WriteBatch();
 
   void Put    (
-      v8::Persistent<v8::Value> keyPtr
+      v8::Local<v8::Object> &keyHandle
     , MDB_val key
-    , v8::Persistent<v8::Value> valuePtr
+    , v8::Local<v8::Object> &valueHandle
     , MDB_val value
   );
-  void Delete (v8::Persistent<v8::Value> keyPtr, MDB_val key);
+  void Delete (v8::Local<v8::Object> &keyHandle, MDB_val key);
   void Clear  ();
   void Write  (v8::Local<v8::Function> callback);
 
@@ -63,13 +62,13 @@ class WriteBatch : public node::ObjectWrap {
  private:
   bool written;
 
-  static v8::Persistent<v8::Function> constructor;
+  static v8::Local<v8::Function> constructor;
 
-  NL_V8_METHOD( New   )
-  NL_V8_METHOD( Put   )
-  NL_V8_METHOD( Del   )
-  NL_V8_METHOD( Clear )
-  NL_V8_METHOD( Write )
+  static NAN_METHOD(New);
+  static NAN_METHOD(Put);
+  static NAN_METHOD(Del);
+  static NAN_METHOD(Clear);
+  static NAN_METHOD(Write);
 };
 
 } // namespace nlmdb

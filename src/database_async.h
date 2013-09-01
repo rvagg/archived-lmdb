@@ -7,6 +7,7 @@
 
 #include <vector>
 #include <node.h>
+#include <nan.h>
 
 #include "async.h"
 
@@ -16,7 +17,7 @@ class OpenWorker : public AsyncWorker {
 public:
   OpenWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
     , OpenOptions options
   );
 
@@ -31,7 +32,7 @@ class CloseWorker : public AsyncWorker {
 public:
   CloseWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
   );
 
   virtual ~CloseWorker ();
@@ -43,9 +44,9 @@ class IOWorker    : public AsyncWorker {
 public:
   IOWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
     , MDB_val key
-    , v8::Persistent<v8::Value> keyPtr
+    , v8::Local<v8::Object> &keyHandle
   );
 
   virtual ~IOWorker ();
@@ -53,17 +54,17 @@ public:
 
 protected:
   MDB_val key;
-  v8::Persistent<v8::Value> keyPtr;
+  v8::Local<v8::Object> &keyHandle;
 };
 
 class ReadWorker : public IOWorker {
 public:
   ReadWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
     , MDB_val key
     , bool asBuffer
-    , v8::Persistent<v8::Value> keyPtr
+    , v8::Local<v8::Object> &keyHandle
   );
 
   virtual ~ReadWorker ();
@@ -79,9 +80,9 @@ class DeleteWorker : public IOWorker {
 public:
   DeleteWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
     , MDB_val key
-    , v8::Persistent<v8::Value> keyPtr
+    , v8::Local<v8::Object> &keyHandle
   );
 
   virtual ~DeleteWorker ();
@@ -95,11 +96,11 @@ class WriteWorker : public DeleteWorker {
 public:
   WriteWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
     , MDB_val key
     , MDB_val value
-    , v8::Persistent<v8::Value> keyPtr
-    , v8::Persistent<v8::Value> valuePtr
+    , v8::Local<v8::Object> &keyHandle
+    , v8::Local<v8::Object> &valueHandle
   );
 
   virtual ~WriteWorker ();
@@ -108,7 +109,7 @@ public:
 
 private:
   MDB_val value;
-  v8::Persistent<v8::Value> valuePtr;
+  v8::Local<v8::Object> &valueHandle;
 };
 
 /*
@@ -116,7 +117,7 @@ class BatchWorker : public AsyncWorker {
 public:
   BatchWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
     , leveldb::WriteBatch* batch
     , std::vector<Reference>* references
     , bool sync
@@ -135,11 +136,11 @@ class ApproximateSizeWorker : public AsyncWorker {
 public:
   ApproximateSizeWorker (
       Database* database
-    , v8::Persistent<v8::Function> callback
+    , NanCallback *callback
     , MDB_val start
     , MDB_val end
-    , v8::Persistent<v8::Value> startPtr
-    , v8::Persistent<v8::Value> endPtr
+    , v8::Local<v8::Object> startHandle
+    , v8::Local<v8::Object> endHandle
   );
 
   virtual ~ApproximateSizeWorker ();
@@ -149,8 +150,8 @@ public:
 
   private:
     leveldb::Range range;
-    v8::Persistent<v8::Value> startPtr;
-    v8::Persistent<v8::Value> endPtr;
+    v8::Local<v8::Object> startHandle;
+    v8::Local<v8::Object> endHandle;
     uint64_t size;
 };
 */

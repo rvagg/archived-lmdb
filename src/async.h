@@ -2,37 +2,54 @@
  * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
  */
 
-#ifndef NL_ASYNC_H
-#define NL_ASYNC_H
+#ifndef LD_ASYNC_H
+#define LD_ASYNC_H
 
 #include <node.h>
+#include "nan.h"
 #include "database.h"
 
 namespace nlmdb {
 
-/* abstract */ class AsyncWorker {
+class Database;
+
+/* abstract */ class AsyncWorker : public NanAsyncWorker {
 public:
   AsyncWorker (
       nlmdb::Database* database
-    , v8::Persistent<v8::Function> callback
-  );
-
-  virtual ~AsyncWorker ();
-  uv_work_t request;
-  virtual void WorkComplete ();
-  virtual void Execute () =0;
+    , NanCallback *callback
+  ) : NanAsyncWorker(callback), database(database) {
+    NanScope();
+    v8::Local<v8::Object> obj = v8::Object::New();
+    NanAssignPersistent(v8::Object, persistentHandle, obj);
+  }
 
 protected:
-  Database* database;
-  v8::Persistent<v8::Function> callback;
-  md_status status;
-  virtual void HandleOKCallback ();
-  virtual void HandleErrorCallback ();
-};
+  void SetStatus (md_status status) {
+    this->status = status;
 
-void AsyncExecute (uv_work_t* req);
-void AsyncExecuteComplete (uv_work_t* req);
-void AsyncQueueWorker (AsyncWorker* worker);
+    if (status.error.length() != 0) {
+      char *e = new char[status.error.length() + 1];
+      strcpy(e, status.error.c_str());
+      this->errmsg = e;
+    } else if (status.code != 0) {
+      const char *me = mdb_strerror(status.code);
+      char *e = new char[strlen(me) + 1];
+      strcpy(e, me);
+      this->errmsg = e;
+    }
+  }
+
+  void SetStatus (int code) {
+    md_status status;
+    status.code = code;
+    SetStatus(status);
+  }
+
+  Database* database;
+
+  md_status status;
+};
 
 } // namespace nlmdb
 

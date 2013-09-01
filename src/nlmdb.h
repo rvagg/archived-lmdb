@@ -9,6 +9,7 @@
 #include <node_buffer.h>
 #include <string>
 #include <lmdb.h>
+#include <nan.h>
 
 typedef struct md_status {
   int code;
@@ -61,46 +62,21 @@ static inline uint32_t UInt32OptionValue(
       : def;
 }
 
-// V8 Isolate stuff introduced with V8 upgrade, see https://github.com/joyent/node/pull/5077
-#if (NODE_MODULE_VERSION > 0x000B)
-#  define NL_NODE_ISOLATE_GET  v8::Isolate::GetCurrent()
-#  define NL_NODE_ISOLATE_DECL v8::Isolate* isolate = NL_NODE_ISOLATE_GET;
-#  define NL_NODE_ISOLATE      isolate 
-#  define NL_NODE_ISOLATE_PRE  isolate, 
-#  define NL_NODE_ISOLATE_POST , isolate 
-#else
-#  define NL_NODE_ISOLATE_GET
-#  define NL_NODE_ISOLATE_DECL
-#  define NL_NODE_ISOLATE
-#  define NL_NODE_ISOLATE_PRE
-#  define NL_NODE_ISOLATE_POST
-#endif
+static inline uint64_t UInt64OptionValue(
+      v8::Local<v8::Object> optionsObj
+    , v8::Handle<v8::String> opt
+    , uint64_t def) {
 
-#if (NODE_MODULE_VERSION > 0x000B)
-#  define NL_SYMBOL(var, key)                                                  \
-     static const v8::Persistent<v8::String> var =                             \
-       v8::Persistent<v8::String>::New(                                        \
-          NL_NODE_ISOLATE_GET, v8::String::NewSymbol(#key));
-#  define NL_HANDLESCOPE v8::HandleScope scope(NL_NODE_ISOLATE);
-#else
-#  define NL_SYMBOL(var, key)                                                  \
-     static const v8::Persistent<v8::String> var =                             \
-       v8::Persistent<v8::String>::New(v8::String::NewSymbol(#key));
-#  define NL_HANDLESCOPE v8::HandleScope scope;
-#endif
+  return !optionsObj.IsEmpty()
+    && optionsObj->Has(opt)
+    && optionsObj->Get(opt)->IsNumber()
+      ? optionsObj->Get(opt)->IntegerValue()
+      : def;
+}
 
-#define NL_V8_METHOD(name)                                                     \
-  static v8::Handle<v8::Value> name (const v8::Arguments& args);
-
-#define NL_THROW_RETURN(...)                                                   \
-  v8::ThrowException(v8::Exception::Error(v8::String::New(#__VA_ARGS__)));     \
-  return v8::Undefined();
-
-#define NL_RUN_CALLBACK(callback, argv, length)                                \
-  v8::TryCatch try_catch;                                                      \
-  callback->Call(v8::Context::GetCurrent()->Global(), length, argv);           \
-  if (try_catch.HasCaught()) {                                                 \
-    node::FatalException(try_catch);                                           \
+#define NL_CB_ERR_IF_NULL_OR_UNDEFINED(thing, name)                            \
+  if (thing->IsNull() || thing->IsUndefined()) {                               \
+    NL_RETURN_CALLBACK_OR_ERROR(callback, #name " cannot be `null` or `undefined`") \
   }
 
 #define NL_RETURN_CALLBACK_OR_ERROR(callback, msg)                             \
@@ -111,15 +87,17 @@ static inline uint32_t UInt32OptionValue(
       )                                                                        \
     };                                                                         \
     NL_RUN_CALLBACK(callback, argv, 1)                                         \
-    return v8::Undefined();                                                    \
+    NanReturnUndefined();                                                      \
   }                                                                            \
-  v8::ThrowException(v8::Exception::Error(v8::String::New(msg)));              \
-  return v8::Undefined();
+  return NanThrowError(msg);
 
-#define NL_CB_ERR_IF_NULL_OR_UNDEFINED(thing, name)                            \
-  if (thing->IsNull() || thing->IsUndefined()) {                               \
-    NL_RETURN_CALLBACK_OR_ERROR(callback, #name " cannot be `null` or `undefined`") \
+#define NL_RUN_CALLBACK(callback, argv, length)                                \
+  v8::TryCatch try_catch;                                                      \
+  callback->Call(v8::Context::GetCurrent()->Global(), length, argv);           \
+  if (try_catch.HasCaught()) {                                                 \
+    node::FatalException(try_catch);                                           \
   }
+
 
 /* NL_METHOD_SETUP_COMMON setup the following objects:
  *  - Database* database
@@ -129,7 +107,7 @@ static inline uint32_t UInt32OptionValue(
  */
 #define NL_METHOD_SETUP_COMMON(name, optionPos, callbackPos)                   \
   if (args.Length() == 0) {                                                    \
-    NL_THROW_RETURN(name() requires a callback argument)                       \
+    return NanThrowError(#name "() requires a callback argument");             \
   }                                                                            \
   nlmdb::Database* database =                                                  \
     node::ObjectWrap::Unwrap<nlmdb::Database>(args.This());                    \
@@ -145,19 +123,28 @@ static inline uint32_t UInt32OptionValue(
     optionsObj = v8::Local<v8::Object>::Cast(args[optionPos]);                 \
     callback = v8::Local<v8::Function>::Cast(args[callbackPos]);               \
   } else {                                                                     \
-    NL_THROW_RETURN(name() requires a callback argument)                       \
+    return NanThrowError(#name "() requires a callback argument");             \
   }
 
 #define NL_METHOD_SETUP_COMMON_ONEARG(name) NL_METHOD_SETUP_COMMON(name, -1, 0)
 
 // NOTE: this MUST be called on objects created by
 // NL_STRING_OR_BUFFER_TO_MDVAL
-static inline void DisposeStringOrBufferFromMDVal(v8::Persistent<v8::Value> ptr
-      , MDB_val val) {
+static inline void DisposeStringOrBufferFromMDVal(
+      v8::Local<v8::Object> handle
+    , MDB_val val) {
 
-  if (!node::Buffer::HasInstance(ptr))
+  if (!node::Buffer::HasInstance(handle))
     delete[] (char*)val.mv_data;
-  ptr.Dispose(NL_NODE_ISOLATE);
+}
+
+static inline void DisposeStringOrBufferFromMDVal(
+      v8::Persistent<v8::Object> &handle
+    , MDB_val val) {
+
+  if (!node::Buffer::HasInstance(NanPersistentToLocal(handle)->Get(NanSymbol("obj"))))
+    delete[] (char*)val.mv_data;
+  NanDispose(handle);
 }
 
 // NOTE: must call DisposeStringOrBufferFromMDVal() on objects created here

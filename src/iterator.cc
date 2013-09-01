@@ -4,9 +4,9 @@
 
 #include <node.h>
 #include <node_buffer.h>
-#include <iostream>
 #include <string.h>
-
+#include <nan.h>
+ 
 #include "database.h"
 #include "iterator.h"
 #include "iterator_async.h"
@@ -66,6 +66,7 @@ int Iterator::Next (MDB_val *key, MDB_val *value) {
   int rc = 0;
 
   if (!started) {
+    //std::cerr << "opening cursor... " << std::endl;
     rc = database->NewIterator(&txn, &cursor);
     //std::cerr << "opened cursor!! " << cursor << ", " << strerror(rc) << std::endl;
     if (rc) {
@@ -92,10 +93,12 @@ int Iterator::Next (MDB_val *key, MDB_val *value) {
     started = true;
     //std::cerr << "Started " << started << std::endl;
   } else {
+    //std::cerr << "started! getting cursor..." << std::endl;
     if (reverse)
       rc = mdb_cursor_get(cursor, key, value, MDB_PREV);
     else
       rc = mdb_cursor_get(cursor, key, value, MDB_NEXT);
+    //std::cerr << "started! got cursor..." << std::endl;
   }
 
   if (rc) {
@@ -103,11 +106,9 @@ int Iterator::Next (MDB_val *key, MDB_val *value) {
     return rc;
   }
 
-  /*
-  std::cerr << "***" << std::string((const char*)key->mv_data, key->mv_size) << std::endl;
-  if (end != NULL)
-    std::cerr << "***end=" << end->c_str() << ", " << reverse << ", " << compare(end, key) << std::endl;
-    */
+  //std::cerr << "***" << std::string((const char*)key->mv_data, key->mv_size) << std::endl;
+  //if (end != NULL)
+    //std::cerr << "***end=" << end->c_str() << ", " << reverse << ", " << compare(end, key) << std::endl;
 
   // 'end' here is an inclusive test
   if ((limit < 0 || ++count <= limit)
@@ -138,22 +139,21 @@ void Iterator::Release () {
 void checkEndCallback (Iterator* iterator) {
   iterator->nexting = false;
   if (iterator->endWorker != NULL) {
-    AsyncQueueWorker(iterator->endWorker);
+    NanAsyncQueueWorker(iterator->endWorker);
     iterator->endWorker = NULL;
   }
 }
 
-v8::Handle<v8::Value> Iterator::Next (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(Iterator::Next) {
+  NanScope();
 
   Iterator* iterator = node::ObjectWrap::Unwrap<Iterator>(args.This());
 
   if (args.Length() == 0 || !args[0]->IsFunction()) {
-    NL_THROW_RETURN(next() requires a callback argument)
+    return NanThrowError("next() requires a callback argument");
   }
 
-  v8::Local<v8::Function> callback = v8::Local<v8::Function>::Cast(args[0]);
+  v8::Local<v8::Function> callback = args[0].As<v8::Function>();
 
   if (iterator->ended) {
     NL_RETURN_CALLBACK_OR_ERROR(callback, "cannot call next() after end()")
@@ -165,24 +165,23 @@ v8::Handle<v8::Value> Iterator::Next (const v8::Arguments& args) {
 
   NextWorker* worker = new NextWorker(
       iterator
-    , v8::Persistent<v8::Function>::New(NL_NODE_ISOLATE_PRE callback)
+    , new NanCallback(callback)
     , checkEndCallback
   );
   iterator->nexting = true;
-  AsyncQueueWorker(worker);
+  NanAsyncQueueWorker(worker);
 
-  return scope.Close(args.Holder());
+  NanReturnValue(args.Holder());
 }
 
-v8::Handle<v8::Value> Iterator::End (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(Iterator::End) {
+  NanScope();
 
   Iterator* iterator = node::ObjectWrap::Unwrap<Iterator>(args.This());
   //std::cerr << "Iterator::End" << iterator->id << ", " << iterator->nexting << ", " << iterator->ended << std::endl;
 
   if (args.Length() == 0 || !args[0]->IsFunction()) {
-    NL_THROW_RETURN(end() requires a callback argument)
+    return NanThrowError("end() requires a callback argument");
   }
 
   v8::Local<v8::Function> callback = v8::Local<v8::Function>::Cast(args[0]);
@@ -193,7 +192,7 @@ v8::Handle<v8::Value> Iterator::End (const v8::Arguments& args) {
 
   EndWorker* worker = new EndWorker(
       iterator
-    , v8::Persistent<v8::Function>::New(NL_NODE_ISOLATE_PRE callback)
+    , new NanCallback(callback)
   );
   iterator->ended = true;
 
@@ -203,30 +202,23 @@ v8::Handle<v8::Value> Iterator::End (const v8::Arguments& args) {
     iterator->endWorker = worker;
   } else {
     //std::cerr << "Iterator can be ended: " << iterator->id << std::endl;
-    AsyncQueueWorker(worker);
+    NanAsyncQueueWorker(worker);
   }
 
-  return scope.Close(args.Holder());
+  NanReturnValue(args.Holder());
 }
 
-v8::Persistent<v8::Function> Iterator::constructor;
+static v8::Persistent<v8::FunctionTemplate> iterator_constructor;
 
 void Iterator::Init () {
-  NL_NODE_ISOLATE_DECL
-  v8::Local<v8::FunctionTemplate> tpl = v8::FunctionTemplate::New(New);
-  tpl->SetClassName(v8::String::NewSymbol("Iterator"));
+  NanScope();
+
+  v8::Local<v8::FunctionTemplate> tpl = v8::FunctionTemplate::New(Iterator::New);
+  NanAssignPersistent(v8::FunctionTemplate, iterator_constructor, tpl);
+  tpl->SetClassName(NanSymbol("Iterator"));
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
-  tpl->PrototypeTemplate()->Set(
-      v8::String::NewSymbol("next")
-    , v8::FunctionTemplate::New(Next)->GetFunction()
-  );
-  tpl->PrototypeTemplate()->Set(
-      v8::String::NewSymbol("end")
-    , v8::FunctionTemplate::New(End)->GetFunction()
-  );
-  constructor = v8::Persistent<v8::Function>::New(
-      NL_NODE_ISOLATE_PRE
-      tpl->GetFunction());
+  NODE_SET_PROTOTYPE_METHOD(tpl, "next", Iterator::Next);
+  NODE_SET_PROTOTYPE_METHOD(tpl, "end", Iterator::End);
 }
 
 v8::Handle<v8::Object> Iterator::NewInstance (
@@ -235,25 +227,26 @@ v8::Handle<v8::Object> Iterator::NewInstance (
       , v8::Handle<v8::Object> optionsObj
     ) {
 
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+  NanScope();
 
   v8::Local<v8::Object> instance;
 
+  v8::Local<v8::FunctionTemplate> constructorHandle =
+      NanPersistentToLocal(iterator_constructor);
+
   if (optionsObj.IsEmpty()) {
-    v8::Handle<v8::Value> argv[2] = { database, id };
-    instance = constructor->NewInstance(2, argv);
+    v8::Handle<v8::Value> argv[] = { database, id };
+    instance = constructorHandle->GetFunction()->NewInstance(2, argv);
   } else {
-    v8::Handle<v8::Value> argv[3] = { database, id, optionsObj };
-    instance = constructor->NewInstance(3, argv);
+    v8::Handle<v8::Value> argv[] = { database, id, optionsObj };
+    instance = constructorHandle->GetFunction()->NewInstance(3, argv);
   }
 
-  return scope.Close(instance);
+  return instance;
 }
 
-v8::Handle<v8::Value> Iterator::New (const v8::Arguments& args) {
-  NL_NODE_ISOLATE_DECL
-  NL_HANDLESCOPE
+NAN_METHOD(Iterator::New) {
+  NanScope();
 
   Database* database = node::ObjectWrap::Unwrap<Database>(args[0]->ToObject());
 
@@ -271,12 +264,12 @@ v8::Handle<v8::Value> Iterator::New (const v8::Arguments& args) {
   if (args.Length() > 1 && args[2]->IsObject()) {
     optionsObj = v8::Local<v8::Object>::Cast(args[2]);
 
-    if (optionsObj->Has(option_start)
-        && (node::Buffer::HasInstance(optionsObj->Get(option_start))
-          || optionsObj->Get(option_start)->IsString())) {
+    if (optionsObj->Has(NanSymbol("start"))
+        && (node::Buffer::HasInstance(optionsObj->Get(NanSymbol("start")))
+          || optionsObj->Get(NanSymbol("start"))->IsString())) {
 
       v8::Local<v8::Value> startBuffer =
-          v8::Local<v8::Value>::New(optionsObj->Get(option_start));
+          v8::Local<v8::Value>::New(optionsObj->Get(NanSymbol("start")));
 
       // ignore start if it has size 0 since a Slice can't have length 0
       if (StringOrBufferLength(startBuffer) > 0) {
@@ -285,12 +278,12 @@ v8::Handle<v8::Value> Iterator::New (const v8::Arguments& args) {
       }
     }
 
-    if (optionsObj->Has(option_end)
-        && (node::Buffer::HasInstance(optionsObj->Get(option_end))
-          || optionsObj->Get(option_end)->IsString())) {
+    if (optionsObj->Has(NanSymbol("end"))
+        && (node::Buffer::HasInstance(optionsObj->Get(NanSymbol("end")))
+          || optionsObj->Get(NanSymbol("end"))->IsString())) {
 
       v8::Local<v8::Value> endBuffer =
-          v8::Local<v8::Value>::New(optionsObj->Get(option_end));
+          v8::Local<v8::Value>::New(optionsObj->Get(NanSymbol("end")));
 
       // ignore end if it has size 0 since a Slice can't have length 0
       if (StringOrBufferLength(endBuffer) > 0) {
@@ -299,19 +292,24 @@ v8::Handle<v8::Value> Iterator::New (const v8::Arguments& args) {
       }
     }
 
-    if (!optionsObj.IsEmpty() && optionsObj->Has(option_limit)) {
+    if (!optionsObj.IsEmpty() && optionsObj->Has(NanSymbol("limit"))) {
       limit =
-        v8::Local<v8::Integer>::Cast(optionsObj->Get(option_limit))->Value();
+        v8::Local<v8::Integer>::Cast(optionsObj->Get(NanSymbol("limit")))->Value();
     }
   }
 
-  bool reverse      = BooleanOptionValue(optionsObj, option_reverse);
-  bool keys         = BooleanOptionValueDefTrue(optionsObj, option_keys);
-  bool values       = BooleanOptionValueDefTrue(optionsObj, option_values);
-  bool keyAsBuffer  = BooleanOptionValueDefTrue(optionsObj, option_keyAsBuffer);
-  bool valueAsBuffer = BooleanOptionValueDefTrue(
+  bool reverse = NanBooleanOptionValue(optionsObj, NanSymbol("reverse"), false);
+  bool keys = NanBooleanOptionValue(optionsObj, NanSymbol("keys"), true);
+  bool values = NanBooleanOptionValue(optionsObj, NanSymbol("values"), true);
+  bool keyAsBuffer = NanBooleanOptionValue(
       optionsObj
-    , option_valueAsBuffer
+    , NanSymbol("keyAsBuffer")
+    , true
+  );
+  bool valueAsBuffer = NanBooleanOptionValue(
+      optionsObj
+    , NanSymbol("valueAsBuffer")
+    , false
   );
 
   Iterator* iterator = new Iterator(
@@ -330,7 +328,7 @@ v8::Handle<v8::Value> Iterator::New (const v8::Arguments& args) {
 
   //std::cerr << "New Iterator " << iterator->id << std::endl;
 
-  return scope.Close(args.This());
+  NanReturnValue(args.This());
 }
 
 } // namespace nlmdb
