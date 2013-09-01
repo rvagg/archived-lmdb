@@ -79,8 +79,6 @@ The optional `options` argument may contain:
 ### lmdb#put(key, value[, options], callback)
 <code>put()</code> is an instance method on an existing database object, used to store new entries, or overwrite existing entries in the LMDB store.
 
-## TODO: `key` can be `Buffer`? What limitations?
-
 The `key` and `value` objects may either be `String`s or Node.js `Buffer` objects and cannot be `undefined` or `null`. Other object types are converted to JavaScript `String`s with the `toString()` method and the resulting `String` *may not* be a zero-length. A richer set of data-types are catered for in LevelUP.
 
 The `callback` function will be called with no arguments if the operation is successful or with a single `error` argument if the operation failed for any reason.
