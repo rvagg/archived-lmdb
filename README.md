@@ -6,6 +6,8 @@ A Low-level, [LevelDOWN](https://github.com/rvagg/node-leveldown)-compatible, No
 
 [![Build Status](https://secure.travis-ci.org/rvagg/lmdb.png)](http://travis-ci.org/rvagg/lmdb)
 
+[![NPM](https://nodei.co/npm/lmdb.png?stars&downloads)](https://nodei.co/npm/lmdb/) [![NPM](https://nodei.co/npm-dl/lmdb.png)](https://nodei.co/npm/lmdb/)
+
 LMDB for Node.js, is primarily designed to serve as a back-end to **[LevelUP](https://github.com/rvagg/node-levelup)**, it is strongly recommended that you use LevelUP in preference to LMDB directly.
 
 <a name="platforms"></a>

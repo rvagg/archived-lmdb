@@ -4,7 +4,7 @@ node_js:
   - "0.10"
 branches:
   only:
-    - lmdb
+    - master
 notifications:
   email:
     - rod@vagg.org
