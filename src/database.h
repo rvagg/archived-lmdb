@@ -21,6 +21,7 @@ namespace nlmdb {
 #define DEFAULT_METASYNC true
 #define DEFAULT_MAPASYNC false
 #define DEFAULT_FIXEDMAP false
+#define DEFAULT_NOTLS false
 
 typedef struct OpenOptions {
   bool     createIfMissing;
@@ -32,6 +33,7 @@ typedef struct OpenOptions {
   bool     metaSync;
   bool     mapAsync;
   bool     fixedMap;
+  bool     notls;
 } OpenOptions;
 
 NAN_METHOD(NLMDB);

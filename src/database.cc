@@ -112,6 +112,8 @@ md_status Database::OpenDatabase (OpenOptions options) {
     env_opt |= MDB_MAPASYNC;
   if (options.fixedMap)
     env_opt |= MDB_FIXEDMAP;
+  if (!options.notls)
+    env_opt |= MDB_NOTLS;
 
   status.code = mdb_env_create(&env);
   if (status.code)
@@ -365,6 +367,11 @@ NAN_METHOD(Database::Open) {
       optionsObj
     , NanSymbol("fixedMap")
     , DEFAULT_FIXEDMAP
+  );
+  options.metaSync = NanBooleanOptionValue(
+      optionsObj
+    , NanSymbol("notls")
+    , DEFAULT_NOTLS
   );
 
   OpenWorker* worker = new OpenWorker(
