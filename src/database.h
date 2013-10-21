@@ -21,7 +21,7 @@ namespace nlmdb {
 #define DEFAULT_METASYNC true
 #define DEFAULT_MAPASYNC false
 #define DEFAULT_FIXEDMAP false
-#define DEFAULT_NOTLS false
+#define DEFAULT_NOTLS true
 
 typedef struct OpenOptions {
   bool     createIfMissing;
