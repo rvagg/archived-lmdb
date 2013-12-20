@@ -22,8 +22,6 @@
         ]
       , 'sources': [
             'liblmdb-<(lmdbversion)/mdb.c'
-          , 'liblmdb-<(lmdbversion)/mdb_copy.c'
-          , 'liblmdb-<(lmdbversion)/mdb_stat.c'
           , 'liblmdb-<(lmdbversion)/midl.c'
         ]
       , 'test-sources': [
