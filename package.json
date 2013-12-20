@@ -1,29 +1,32 @@
 {
-    "name"            : "lmdb"
-  , "description"     : "A Low-level, LevelDOWN-compatible, Node.js LMDB binding"
-  , "contributors"    : [
-        "Rod Vagg <r@va.gg> (https://github.com/rvagg)"
-    ]
-  , "keywords": [
-        "lmdb", "mdb", "level", "leveldown"
-    ]
-  , "version"         : "0.1.2"
-  , "main"            : "lmdb.js"
-  , "dependencies"    : {
-        "bindings"           : "~1.1.0"
-      , "nan"                : "~0.3.1"
-    }
-  , "devDependencies" : {
-        "tap"                : "*"
-      , "rimraf"             : "*"
-      , "abstract-leveldown" : "*"
-    }
-  , "repository"      : {
-        "type"               : "git"
-      , "url"                : "https://github.com/rvagg/lmdb.git"
-    }
-  , "scripts"         : {
-        "test"               : "tap ./test.js test/*-test.js --stderr"
-    }
-  , "license"         : "MIT"
+  "name": "lmdb",
+  "description": "A Low-level, LevelDOWN-compatible, Node.js LMDB binding",
+  "contributors": [
+    "Rod Vagg <r@va.gg> (https://github.com/rvagg)"
+  ],
+  "keywords": [
+    "lmdb",
+    "mdb",
+    "level",
+    "leveldown"
+  ],
+  "version": "0.1.3",
+  "main": "lmdb.js",
+  "dependencies": {
+    "bindings": "~1.1.0",
+    "nan": "~0.3.1"
+  },
+  "devDependencies": {
+    "tap": "*",
+    "rimraf": "*",
+    "abstract-leveldown": "*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rvagg/lmdb.git"
+  },
+  "scripts": {
+    "test": "tap ./test.js test/*-test.js --stderr"
+  },
+  "license": "MIT"
 }
