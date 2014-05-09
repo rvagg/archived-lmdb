@@ -123,6 +123,10 @@ md_status Database::OpenDatabase (OpenOptions options) {
   if (status.code)
     return status;
 
+  status.code = mdb_env_set_maxreaders(env, options.maxReaders);
+  if (status.code)
+    return status;
+
   //TODO: yuk
   if (options.createIfMissing) {
     char cmd[200];
@@ -338,6 +342,11 @@ NAN_METHOD(Database::Open) {
       optionsObj
     , NanSymbol("mapSize")
     , DEFAULT_MAPSIZE
+  );
+  options.maxReaders = UInt64OptionValue(
+      optionsObj
+    , NanSymbol("maxReaders")
+    , DEFAULT_READERS
   );
   options.sync = NanBooleanOptionValue(
       optionsObj
