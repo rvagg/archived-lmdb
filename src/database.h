@@ -15,6 +15,7 @@
 namespace nlmdb {
 
 #define DEFAULT_MAPSIZE 10 << 20 // 10 MB
+#define DEFAULT_READERS 126 // LMDB default
 #define DEFAULT_SYNC true
 #define DEFAULT_READONLY false
 #define DEFAULT_WRITEMAP false
@@ -27,6 +28,7 @@ typedef struct OpenOptions {
   bool     createIfMissing;
   bool     errorIfExists;
   uint64_t mapSize;
+  uint64_t maxReaders;
   bool     sync;
   bool     readOnly;
   bool     writeMap;

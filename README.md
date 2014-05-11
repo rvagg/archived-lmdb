@@ -60,6 +60,8 @@ The optional `options` argument may contain:
 
 * `'mapSize'` *(boolean, default: `10485760` (10MB))*: Specify the size of the memory map, which is also the **maximum size of the database**. The value should be chosen as large as possible, to accommodate future growth of the database. The size may be changed by closing and reopening the environment. Any attempt to set a size smaller than the space already consumed by the environment will be silently changed to the current size of the used space. The size should be a multiple of the OS page size.
 
+* `'maxReaders'` *(integer, default: `126`)*: Specify the number of slots in the readers table, which determines the maximum number of concurrent iterators. The reader table is stored in the lock file and occupies 64 bytes per slot. Iterators error with `MDB_READERS_FULL` when there are no free reader slots, so set this to allow space for as many concurrent iterators as you expect to use. The size may be changed by closing and reopening the environment.
+
 * `'sync'` *(boolean, default: `true`)*: By default, system buffers are flushed to disk after committing transactions (which are performed on every operation). Use this option to turn off this behaviour to speed up writes at the risk of losing writes upon system crash. Note that setting `'sync'` to `false` and `'writeMap'` to `true` leaves the system with no hint for when to write transactions to disk. Using `'mapAsync'` with `'writeMap'` may be preferable.
 
 * `'readOnly'` *(boolean, default: `false`)*: Open the environment in read-only mode. No write operations will be allowed. LMDB will still modify the lock file - except on read-only filesystems, where LMDB does not use locks.
