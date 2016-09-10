@@ -228,7 +228,7 @@ int Database::DeleteFromDatabase (MDB_val key) {
     return rc;
 
   rc = mdb_del(txn, dbi, &key, NULL);
-  if (rc)
+  if (rc != 0 && rc != MDB_NOTFOUND)
     return rc;
 
   rc = mdb_txn_commit(txn);
