@@ -126,6 +126,20 @@ md_status Database::OpenDatabase (OpenOptions options) {
     return status;
   }
 
+  MDB_txn *txn;
+
+  status.code = mdb_txn_begin(env, NULL, 0, &txn);
+  if (status.code)
+    return status;
+
+  status.code = mdb_dbi_open(txn, NULL, 0, &dbi);
+  if (status.code) {
+    mdb_txn_abort(txn);
+    return status;
+  }
+
+  status.code = mdb_txn_commit(txn);
+
   return status;
 }
 
@@ -140,12 +154,6 @@ int Database::PutToDatabase (MDB_val key, MDB_val value) {
   rc = mdb_txn_begin(env, NULL, 0, &txn);
   if (rc)
     return rc;
-
-  rc = mdb_open(txn, NULL, 0, &dbi);
-  if (rc) {
-    mdb_txn_abort(txn);
-    return rc;
-  }
 
   rc = mdb_put(txn, dbi, &key, &value, 0);
   if (rc) {
@@ -165,12 +173,6 @@ int Database::PutToDatabase (std::vector< BatchOp* >* operations) {
   rc = mdb_txn_begin(env, NULL, 0, &txn);
   if (rc)
     return rc;
-
-  rc = mdb_open(txn, NULL, 0, &dbi);
-  if (rc) {
-    mdb_txn_abort(txn);
-    return rc;
-  }
 
   for (std::vector< BatchOp* >::iterator it = operations->begin()
       ; it != operations->end()
@@ -197,12 +199,6 @@ int Database::GetFromDatabase (MDB_val key, std::string& value) {
   if (rc)
     return rc;
 
-  rc = mdb_open(txn, NULL, 0, &dbi);
-  if (rc) {
-    mdb_txn_abort(txn);
-    return rc;
-  }
-
   rc = mdb_get(txn, dbi, &key, &val);
   if (rc) {
     mdb_txn_abort(txn);
@@ -227,12 +223,6 @@ int Database::DeleteFromDatabase (MDB_val key) {
   if (rc)
     return rc;
 
-  rc = mdb_open(txn, NULL, 0, &dbi);
-  if (rc) {
-    mdb_txn_abort(txn);
-    return rc;
-  }
-
   rc = mdb_del(txn, dbi, &key, NULL);
   if (rc != 0 && rc != MDB_NOTFOUND) {
     mdb_txn_abort(txn);
@@ -250,12 +240,6 @@ int Database::NewCursor (MDB_txn **txn, MDB_cursor **cursor) {
   rc = mdb_txn_begin(env, NULL, MDB_RDONLY, txn);
   if (rc)
     return rc;
-
-  rc = mdb_open(*txn, NULL, 0, &dbi);
-  if (rc) {
-    mdb_txn_abort(*txn);
-    return rc;
-  }
 
   rc = mdb_cursor_open(*txn, dbi, cursor);
 
