@@ -2,7 +2,7 @@
     'targets': [{
         'target_name': 'liblmdb'
       , 'variables': {
-            'lmdbversion': '20130601'
+            'lmdbversion': '20160205'
         }
       , 'defines': [ 'MDB_DEBUG=1' ]
       , 'type': 'static_library'
