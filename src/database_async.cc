@@ -189,16 +189,16 @@ void WriteWorker::WorkComplete () {
 ApproximateSizeWorker::ApproximateSizeWorker (
     Database *database
   , Nan::Callback *callback
-  , std::string* start
-  , std::string* end
+  , MDB_val* start
+  , MDB_val* end
 ) : AsyncWorker(database, callback)
   , start(start)
   , end(end)
 { };
 
 ApproximateSizeWorker::~ApproximateSizeWorker () {
-  delete start;
-  delete end;
+  LD_FREE_COPY(start);
+  LD_FREE_COPY(end);
 }
 
 void ApproximateSizeWorker::Execute () {

@@ -31,16 +31,16 @@ public:
   Iterator (
       Database* database
     , uint32_t id
-    , std::string* start
-    , std::string* end
+    , MDB_val* start
+    , MDB_val* end
     , bool reverse
     , bool keys
     , bool values
     , int limit
-    , std::string* lt
-    , std::string* lte
-    , std::string* gt
-    , std::string* gte
+    , MDB_val* lt
+    , MDB_val* lte
+    , MDB_val* gt
+    , MDB_val* gte
     , bool fillCache
     , bool keyAsBuffer
     , bool valueAsBuffer
@@ -53,8 +53,9 @@ public:
   void IteratorEnd ();
   void Release ();
 
-  int Compare (std::string *b);
-  void Seek (std::string *k);
+  int Compare (MDB_val* b);
+  int CompareRev (MDB_val* a);
+  void Seek (MDB_val* k);
   void Prev ();
   void Next ();
   void SeekToFirst ();
@@ -66,8 +67,8 @@ private:
   uint32_t id;
   MDB_txn     *txn;
   MDB_cursor  *cursor;
-  std::string* start;
-  std::string* end;
+  MDB_val* start;
+  MDB_val* end;
   MDB_val currentKey;
   MDB_val currentValue;
   bool seeking;
@@ -75,10 +76,10 @@ private:
   bool keys;
   bool values;
   int limit;
-  std::string* lt;
-  std::string* lte;
-  std::string* gt;
-  std::string* gte;
+  MDB_val* lt;
+  MDB_val* lte;
+  MDB_val* gt;
+  MDB_val* gte;
   int count;
   size_t highWaterMark;
 

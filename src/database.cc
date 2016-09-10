@@ -225,7 +225,7 @@ int Database::DeleteFromDatabase (MDB_val key) {
   return rc;
 }
 
-int Database::NewIterator (MDB_txn **txn, MDB_cursor **cursor) {
+int Database::NewCursor (MDB_txn **txn, MDB_cursor **cursor) {
   int rc;
 
   rc = mdb_txn_begin(env, NULL, MDB_RDONLY, txn);
@@ -243,7 +243,7 @@ int Database::NewIterator (MDB_txn **txn, MDB_cursor **cursor) {
   return rc;
 }
 
-uint64_t Database::ApproximateSizeFromDatabase (std::string *start, std::string *end) {
+uint64_t Database::ApproximateSizeFromDatabase (MDB_val* start, MDB_val* end) {
   uint64_t size = 0;
   int rc;
   MDB_txn* txn;
@@ -251,19 +251,25 @@ uint64_t Database::ApproximateSizeFromDatabase (std::string *start, std::string 
   MDB_val key;
   MDB_val val;
 
-  rc = NewIterator(&txn, &cursor);
+  rc = NewCursor(&txn, &cursor);
 
   if (rc != 0)
     return size;
 
-  rc = mdb_cursor_get(cursor, &key, &val, MDB_FIRST);
+  if (start != NULL) {
+    key.mv_data = start->mv_data;
+    key.mv_size = start->mv_size;
+    rc = mdb_cursor_get(cursor, &key, &val, MDB_SET_RANGE);
+  } else {
+    rc = mdb_cursor_get(cursor, &key, &val, MDB_FIRST);
+  }
 
-  if (rc == 0) {
-    do {
-      size += key.mv_size;
-      size += val.mv_size;
-      rc = mdb_cursor_get(cursor, &key, &val, MDB_NEXT);
-    } while (rc == 0);
+  while (rc == 0) {
+    size += key.mv_size;
+    size += val.mv_size;
+    if (end != NULL && mdb_cmp(txn, dbi, &key, end) >= 0)
+      break;
+    rc = mdb_cursor_get(cursor, &key, &val, MDB_NEXT);
   }
 
   mdb_cursor_close(cursor);
@@ -637,7 +643,7 @@ NAN_METHOD(Database::Batch) {
     return;
   }
 
-  LD_METHOD_SETUP_COMMON(batch, 1, 2);
+  LD_METHOD_SETUP_COMMON(batch, 1, 2)
 
   bool sync = BooleanOptionValue(optionsObj, "sync");
 
@@ -674,8 +680,8 @@ NAN_METHOD(Database::Batch) {
 NAN_METHOD(Database::ApproximateSize) {
   v8::Local<v8::Object> startBuffer = info[0].As<v8::Object>();
   v8::Local<v8::Object> endBuffer = info[1].As<v8::Object>();
-  std::string* start;
-  std::string* end;
+  MDB_val* start = NULL;
+  MDB_val* end = NULL;
 
   LD_METHOD_SETUP_COMMON(approximateSize, -1, 2)
 

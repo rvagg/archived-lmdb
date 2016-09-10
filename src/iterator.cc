@@ -17,31 +17,19 @@ namespace leveldown {
 
 static Nan::Persistent<v8::FunctionTemplate> iterator_constructor;
 
-inline int compare(std::string* str, MDB_val* value) {
-  const int min_len = (str->length() < value->mv_size)
-      ? str->length()
-      : value->mv_size;
-  int r = memcmp(str->c_str(), (char *)value->mv_data, min_len);
-  if (r == 0) {
-    if (str->length() < value->mv_size) r = -1;
-    else if (str->length() > value->mv_size) r = +1;
-  }
-  return r;
-}
-
 Iterator::Iterator (
     Database* database
   , uint32_t id
-  , std::string* start
-  , std::string* end
+  , MDB_val* start
+  , MDB_val* end
   , bool reverse
   , bool keys
   , bool values
   , int limit
-  , std::string* lt
-  , std::string* lte
-  , std::string* gt
-  , std::string* gte
+  , MDB_val* lt
+  , MDB_val* lte
+  , MDB_val* gt
+  , MDB_val* gte
   , bool fillCache
   , bool keyAsBuffer
   , bool valueAsBuffer
@@ -65,7 +53,7 @@ Iterator::Iterator (
   Nan::HandleScope scope;
 
   started    = false;
-  rc         = database->NewIterator(&txn, &cursor);
+  rc         = database->NewCursor(&txn, &cursor);
   alloc      = rc == 0;
   count      = 0;
   seeking    = false;
@@ -75,18 +63,12 @@ Iterator::Iterator (
 };
 
 Iterator::~Iterator () {
-  if (start != NULL)
-    delete start;
-  if (end != NULL)
-    delete end;
-  if (lt != NULL)
-    delete lt;
-  if (gt != NULL)
-    delete gt;
-  if (lte != NULL)
-    delete lte;
-  if (gte != NULL)
-    delete gte;
+  LD_FREE_COPY(start);
+  LD_FREE_COPY(end);
+  LD_FREE_COPY(lt);
+  LD_FREE_COPY(gt);
+  LD_FREE_COPY(lte);
+  LD_FREE_COPY(gte);
 };
 
 bool Iterator::GetIterator () {
@@ -105,24 +87,24 @@ bool Iterator::GetIterator () {
           SeekToLast();
         } else if (rc == 0) {
           if (lt != NULL) {
-            if (compare(lt, &currentKey) <= 0)
+            if (CompareRev(lt) <= 0)
               Prev();
           } else if (lte != NULL) {
-            if (compare(lte, &currentKey) < 0)
+            if (CompareRev(lte) < 0)
               Prev();
           } else if (start != NULL) {
-            if (compare(start, &currentKey))
+            if (CompareRev(start))
               Prev();
           }
         }
 
         if (IsValid() && lt != NULL) {
-          if (compare(lt, &currentKey) <= 0)
+          if (CompareRev(lt) <= 0)
             Prev();
         }
       } else {
         if (IsValid() && gt != NULL
-            && compare(gt, &currentKey) == 0)
+            && CompareRev(gt) == 0)
           Next();
       }
     } else if (reverse) {
@@ -151,17 +133,17 @@ bool Iterator::Read (std::string& key, std::string& value) {
 
   // now check if this is the end or not, if not then return the key & value
   if (IsValid()) {
-    int isEnd = end == NULL ? 1 : compare(end, &currentKey);
+    int isEnd = end == NULL ? 1 : CompareRev(end);
 
     if ((limit < 0 || ++count <= limit)
       && (end == NULL
           || (reverse && (isEnd <= 0))
           || (!reverse && (isEnd >= 0)))
-      && ( lt  != NULL ? (compare(lt, &currentKey) > 0)
-         : lte != NULL ? (compare(lte, &currentKey) >= 0)
+      && ( lt  != NULL ? (CompareRev(lt) > 0)
+         : lte != NULL ? (CompareRev(lte) >= 0)
          : true )
-      && ( gt  != NULL ? (compare(gt, &currentKey) < 0)
-         : gte != NULL ? (compare(gte, &currentKey) <= 0)
+      && ( gt  != NULL ? (CompareRev(gt) < 0)
+         : gte != NULL ? (CompareRev(gte) <= 0)
          : true )
     ) {
       if (keys)
@@ -214,17 +196,17 @@ void checkEndCallback (Iterator* iterator) {
   }
 }
 
-int Iterator::Compare (std::string *b) {
-  int cmp = compare(b, &currentKey);
-  // Reverse the comparison
-  if (cmp > 0) cmp = -1;
-  else if (cmp < 0) cmp = 1;
-  return cmp;
+int Iterator::Compare (MDB_val* b) {
+  return mdb_cmp(txn, database->dbi, &currentKey, b);
 }
 
-void Iterator::Seek (std::string *k) {
-  currentKey.mv_data = (void *)k->data();
-  currentKey.mv_size = k->size();
+int Iterator::CompareRev (MDB_val* a) {
+  return mdb_cmp(txn, database->dbi, a, &currentKey);
+}
+
+void Iterator::Seek (MDB_val* k) {
+  currentKey.mv_data = k->mv_data;
+  currentKey.mv_size = k->mv_size;
   rc = mdb_cursor_get(cursor, &currentKey, &currentValue, MDB_SET_RANGE);
 }
 
@@ -259,7 +241,10 @@ NAN_METHOD(Iterator::Seek) {
   }
 
   Nan::Utf8String key(info[0]);
-  std::string k(*key, key.length());
+
+  MDB_val k;
+  k.mv_data = (void*)*key;
+  k.mv_size = key.length();
 
   iterator->Seek(&k);
   iterator->seeking = true;
@@ -400,8 +385,8 @@ v8::Local<v8::Object> Iterator::NewInstance (
 NAN_METHOD(Iterator::New) {
   Database* database = Nan::ObjectWrap::Unwrap<Database>(info[0]->ToObject());
 
-  std::string* start = NULL;
-  std::string* end = NULL;
+  MDB_val* start = NULL;
+  MDB_val* end = NULL;
   int limit = -1;
   // default highWaterMark from Readble-streams
   size_t highWaterMark = 16 * 1024;
@@ -415,10 +400,10 @@ NAN_METHOD(Iterator::New) {
   v8::Local<v8::Object> gtHandle;
   v8::Local<v8::Object> gteHandle;
 
-  std::string* lt = NULL;
-  std::string* lte = NULL;
-  std::string* gt = NULL;
-  std::string* gte = NULL;
+  MDB_val* lt = NULL;
+  MDB_val* lte = NULL;
+  MDB_val* gt = NULL;
+  MDB_val* gte = NULL;
 
   //default to forward.
   bool reverse = false;
@@ -472,9 +457,8 @@ NAN_METHOD(Iterator::New) {
       if (StringOrBufferLength(ltBuffer) > 0) {
         LD_STRING_OR_BUFFER_TO_COPY(lt, ltBuffer, lt)
         if (reverse) {
-          if (start != NULL)
-            delete start;
-          start = new std::string(lt->data(), lt->size());
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, lt);
         }
       }
     }
@@ -489,9 +473,8 @@ NAN_METHOD(Iterator::New) {
       if (StringOrBufferLength(lteBuffer) > 0) {
         LD_STRING_OR_BUFFER_TO_COPY(lte, lteBuffer, lte)
         if (reverse) {
-          if (start != NULL)
-            delete start;
-          start = new std::string(lte->data(), lte->size());
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, lte);
         }
       }
     }
@@ -506,9 +489,8 @@ NAN_METHOD(Iterator::New) {
       if (StringOrBufferLength(gtBuffer) > 0) {
         LD_STRING_OR_BUFFER_TO_COPY(gt, gtBuffer, gt)
         if (!reverse) {
-          if (start != NULL)
-            delete start;
-          start = new std::string(gt->data(), gt->size());
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, gt);
         }
       }
     }
@@ -523,9 +505,8 @@ NAN_METHOD(Iterator::New) {
       if (StringOrBufferLength(gteBuffer) > 0) {
         LD_STRING_OR_BUFFER_TO_COPY(gte, gteBuffer, gte)
         if (!reverse) {
-          if (start != NULL)
-            delete start;
-          start = new std::string(gte->data(), gte->size());
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, gte);
         }
       }
     }

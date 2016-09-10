@@ -120,8 +120,8 @@ public:
   ApproximateSizeWorker (
       Database *database
     , Nan::Callback *callback
-    , std::string* start
-    , std::string* end
+    , MDB_val* start
+    , MDB_val* end
   );
 
   virtual ~ApproximateSizeWorker ();
@@ -129,8 +129,8 @@ public:
   virtual void HandleOKCallback ();
 
   private:
-    std::string* start;
-    std::string* end;
+    MDB_val* start;
+    MDB_val* end;
     uint64_t size;
 };
 

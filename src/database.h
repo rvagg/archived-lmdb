@@ -85,18 +85,19 @@ public:
   int PutToDatabase      (std::vector< BatchOp* >* operations);
   int GetFromDatabase    (MDB_val key, MDB_val& value);
   int DeleteFromDatabase (MDB_val key);
-  int NewIterator        (MDB_txn **txn, MDB_cursor **cursor);
+  int NewCursor          (MDB_txn **txn, MDB_cursor **cursor);
   void ReleaseIterator   (uint32_t id);
-  uint64_t ApproximateSizeFromDatabase (std::string* start, std::string* end);
+  uint64_t ApproximateSizeFromDatabase (MDB_val* start, MDB_val* end);
   void GetPropertyFromDatabase (char* property, std::string* value);
   int BackupDatabase (char* path);
 
   Database (const v8::Local<v8::Value>& from);
   ~Database ();
 
+  MDB_dbi dbi;
+
 private:
   MDB_env *env;
-  MDB_dbi dbi;
   Nan::Utf8String* location;
   uint32_t currentIteratorId;
   void(*pendingCloseWorker);

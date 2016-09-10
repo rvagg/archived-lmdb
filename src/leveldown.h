@@ -86,34 +86,46 @@ static inline void DisposeStringOrBufferFromSlice(
 
 #define LD_STRING_OR_BUFFER_TO_COPY(to, from, name)                            \
   size_t to ## Sz_;                                                            \
-  char* to ## Ch_ = NULL;                                                      \
   if (from->IsNull() || from->IsUndefined()) {                                 \
     ;                                                                          \
   } else if (!from->ToObject().IsEmpty()                                       \
       && node::Buffer::HasInstance(from->ToObject())) {                        \
     to ## Sz_ = node::Buffer::Length(from->ToObject());                        \
     if (to ## Sz_ != 0) {                                                      \
-      to ## Ch_ = new char[to ## Sz_];                                         \
-      memcpy(to ## Ch_, node::Buffer::Data(from->ToObject()), to ## Sz_);      \
+      to = (MDB_val*)malloc(sizeof(MDB_val));                                  \
+      to->mv_size = to ## Sz_;                                                 \
+      to->mv_data = (void*)malloc(to->mv_size);                                \
+      memcpy(to->mv_data, node::Buffer::Data(from->ToObject()), to->mv_size);  \
     }                                                                          \
   } else {                                                                     \
-    v8::Local<v8::String> to ## Str = from->ToString();                        \
-    to ## Sz_ = to ## Str->Utf8Length();                                       \
+    v8::Local<v8::String> to ## Str_ = from->ToString();                       \
+    to ## Sz_ = to ## Str_->Utf8Length();                                      \
     if (to ## Sz_ != 0) {                                                      \
-      to ## Ch_ = new char[to ## Sz_];                                         \
-      to ## Str->WriteUtf8(                                                    \
-          to ## Ch_                                                            \
+      to = (MDB_val*)malloc(sizeof(MDB_val));                                  \
+      to->mv_size = to ## Sz_;                                                 \
+      to->mv_data = (void*)malloc(to->mv_size);                                \
+      to ## Str_->WriteUtf8(                                                   \
+          (char*)to->mv_data                                                   \
         , -1                                                                   \
         , NULL, v8::String::NO_NULL_TERMINATION                                \
       );                                                                       \
     }                                                                          \
   }                                                                            \
-  if (to ## Ch_ == NULL) {                                                     \
-    to = new std::string();                                                    \
-  } else {                                                                     \
-    to = new std::string(to ## Ch_, to ## Sz_);                                \
-    delete[] to ## Ch_;                                                        \
-  }
+
+#define LD_CREATE_COPY(to, val) do { \
+  to = (MDB_val*)malloc(sizeof(MDB_val));                                      \
+  to->mv_size = val->mv_size;                                                  \
+  to->mv_data = (void*)malloc(val->mv_size);                                   \
+  memcpy(to->mv_data, val->mv_data, val->mv_size);                             \
+} while (0)
+
+#define LD_FREE_COPY(to) do {                                                  \
+  if (to != NULL) {                                                            \
+    free(to->mv_data);                                                         \
+    free(to);                                                                  \
+    to = NULL;                                                                 \
+  }                                                                            \
+} while (0)
 
 #define LD_RETURN_CALLBACK_OR_ERROR(callback, msg)                             \
   if (!callback.IsEmpty() && callback->IsFunction()) {                         \
