@@ -194,7 +194,7 @@ int Database::GetFromDatabase (MDB_val key, MDB_val& value) {
   int rc;
   MDB_txn *txn;
 
-  rc = mdb_txn_begin(env, NULL, 0, &txn);
+  rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
   if (rc)
     return rc;
 
@@ -224,12 +224,16 @@ int Database::DeleteFromDatabase (MDB_val key) {
     return rc;
 
   rc = mdb_open(txn, NULL, 0, &dbi);
-  if (rc)
+  if (rc) {
+    mdb_txn_abort(txn);
     return rc;
+  }
 
   rc = mdb_del(txn, dbi, &key, NULL);
-  if (rc != 0 && rc != MDB_NOTFOUND)
+  if (rc != 0 && rc != MDB_NOTFOUND) {
+    mdb_txn_abort(txn);
     return rc;
+  }
 
   rc = mdb_txn_commit(txn);
 
