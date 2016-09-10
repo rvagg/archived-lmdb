@@ -190,9 +190,10 @@ int Database::PutToDatabase (std::vector< BatchOp* >* operations) {
   return rc;
 }
 
-int Database::GetFromDatabase (MDB_val key, MDB_val& value) {
+int Database::GetFromDatabase (MDB_val key, std::string& value) {
   int rc;
   MDB_txn *txn;
+  MDB_val val;
 
   rc = mdb_txn_begin(env, NULL, MDB_RDONLY, &txn);
   if (rc)
@@ -204,11 +205,16 @@ int Database::GetFromDatabase (MDB_val key, MDB_val& value) {
     return rc;
   }
 
-  rc = mdb_get(txn, dbi, &key, &value);
+  rc = mdb_get(txn, dbi, &key, &val);
   if (rc) {
     mdb_txn_abort(txn);
     return rc;
   }
+
+  // We need to copy the data before the txn
+  // is committed, lest we end up with a nasty
+  // race condition on the next update.
+  value.assign((char*)val.mv_data, val.mv_size);
 
   rc = mdb_txn_commit(txn);
 

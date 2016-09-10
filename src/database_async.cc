@@ -106,9 +106,9 @@ void ReadWorker::HandleOKCallback () {
     //TODO: could use NewBuffer if we carefully manage the lifecycle of `value`
     //and avoid an an extra allocation. We'd have to clean up properly when not OK
     //and let the new Buffer manage the data when OK
-    returnValue = Nan::CopyBuffer((char*)value.mv_data, value.mv_size).ToLocalChecked();
+    returnValue = Nan::CopyBuffer(value.data(), value.size()).ToLocalChecked();
   } else {
-    returnValue = Nan::New<v8::String>((char*)value.mv_data, value.mv_size).ToLocalChecked();
+    returnValue = Nan::New<v8::String>(value.data(), value.size()).ToLocalChecked();
   }
 
   v8::Local<v8::Value> argv[] = {

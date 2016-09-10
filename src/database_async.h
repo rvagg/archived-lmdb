@@ -74,7 +74,7 @@ public:
 
 private:
   bool asBuffer;
-  MDB_val value;
+  std::string value;
 };
 
 class DeleteWorker : public IOWorker {

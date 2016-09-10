@@ -83,7 +83,7 @@ public:
   void CloseDatabase     ();
   int PutToDatabase      (MDB_val key, MDB_val value);
   int PutToDatabase      (std::vector< BatchOp* >* operations);
-  int GetFromDatabase    (MDB_val key, MDB_val& value);
+  int GetFromDatabase    (MDB_val key, std::string& value);
   int DeleteFromDatabase (MDB_val key);
   int NewCursor          (MDB_txn **txn, MDB_cursor **cursor);
   void ReleaseIterator   (uint32_t id);
