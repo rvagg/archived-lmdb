@@ -105,18 +105,29 @@ md_status Database::OpenDatabase (OpenOptions options) {
     env_opt |= MDB_NOTLS;
 
   status.code = mdb_env_create(&env);
-  if (status.code)
+  if (status.code) {
+    mdb_env_close(env);
     return status;
+  }
 
   status.code = mdb_env_set_mapsize(env, options.mapSize);
-  if (status.code)
+  if (status.code) {
+    mdb_env_close(env);
     return status;
+  }
 
   status.code = mdb_env_set_maxreaders(env, options.maxReaders);
-  if (status.code)
+  if (status.code) {
+    mdb_env_close(env);
     return status;
+  }
 
   status.code = mdb_env_open(env, **location, env_opt, 0664);
+  if (status.code) {
+    mdb_env_close(env);
+    return status;
+  }
+
   return status;
 }
 
