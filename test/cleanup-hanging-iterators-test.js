@@ -1,9 +1,9 @@
-const test       = require('tap').test
+const test       = require('tape')
     , testCommon = require('abstract-leveldown/testCommon')
     , leveldown  = require('../')
-    , makeTest   = require('./make-test')
+    , makeTest   = require('./make')
 
-false && makeTest('test ended iterator', 4, function (db, t, done) {
+makeTest('test ended iterator', function (db, t, done) {
   // standard iterator with an end() properly called, easy
 
   var it = db.iterator({ keyAsBuffer: false, valueAsBuffer: false })
@@ -18,7 +18,7 @@ false && makeTest('test ended iterator', 4, function (db, t, done) {
   })
 })
 
-false && makeTest('test non-ended iterator', 3, function (db, t, done) {
+makeTest('test non-ended iterator', function (db, t, done) {
   // no end() call on our iterator, cleanup should crash Node if not handled properly
   var it = db.iterator({ keyAsBuffer: false, valueAsBuffer: false })
   it.next(function (err, key, value) {
@@ -29,7 +29,7 @@ false && makeTest('test non-ended iterator', 3, function (db, t, done) {
   })
 })
 
-makeTest('test multiple non-ended iterators', 0, function (db, t, done) {
+makeTest('test multiple non-ended iterators', function (db, t, done) {
   // no end() call on our iterator, cleanup should crash Node if not handled properly
   db.iterator()
   db.iterator().next(function () {})
@@ -38,7 +38,7 @@ makeTest('test multiple non-ended iterators', 0, function (db, t, done) {
   setTimeout(done, 50)
 })
 
-false && makeTest('test ending iterators', 0, function (db, t, done) {
+makeTest('test ending iterators', function (db, t, done) {
   // at least one end() should be in progress when we try to close the db
   var it1 = db.iterator().next(function () {
         it1.end(function () {})

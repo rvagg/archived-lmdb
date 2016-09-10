@@ -1,7 +1,6 @@
 const BUFFERS = false
 
-var rimraf    = require('rimraf')
-  , leveldown = require('..')
+var leveldown = require('..')
   , crypto    = require('crypto')
   , putCount  = 0
   , getCount  = 0
@@ -29,7 +28,9 @@ function run () {
     process.nextTick(run)
   })
 
-  if (getCount % 1000 === 0)
+  if (getCount % 1000 === 0) {
+    if (typeof gc != 'undefined')
+      gc()
     console.log(
         'getCount ='
       , getCount
@@ -38,13 +39,14 @@ function run () {
       , ', rss ='
       , Math.round(process.memoryUsage().rss / rssBase * 100) + '%'
       , Math.round(process.memoryUsage().rss / 1024 / 1024) + 'M'
-      /*, JSON.stringify([0,1,2,3,4,5,6].map(function (l) {
+      , JSON.stringify([0,1,2,3,4,5,6].map(function (l) {
           return db.getProperty('leveldb.num-files-at-level' + l)
-        }))*/
+        }))
     )
+  }
 }
 
-rimraf('./leakydb', function () {
+leveldown.destroy('./leakydb', function () {
   db = leveldown('./leakydb')
   db.open({ xcacheSize: 0, xmaxOpenFiles: 10 }, function () {
     rssBase = process.memoryUsage().rss

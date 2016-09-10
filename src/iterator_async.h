@@ -1,9 +1,10 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
 
-#ifndef NL_ITERATOR_ASYNC_H
-#define NL_ITERATOR_ASYNC_H
+#ifndef LD_ITERATOR_ASYNC_H
+#define LD_ITERATOR_ASYNC_H
 
 #include <node.h>
 #include <nan.h>
@@ -11,13 +12,13 @@
 #include "async.h"
 #include "iterator.h"
 
-namespace nlmdb {
+namespace leveldown {
 
 class NextWorker : public AsyncWorker {
 public:
   NextWorker (
       Iterator* iterator
-    , NanCallback *callback
+    , Nan::Callback *callback
     , void (*localCallback)(Iterator*)
   );
 
@@ -27,28 +28,28 @@ public:
   virtual void WorkComplete ();
 
 private:
-  Iterator *iterator;
+  Iterator* iterator;
   void (*localCallback)(Iterator*);
-  MDB_val key;
-  MDB_val value;
+  std::vector<std::pair<std::string, std::string> > result;
+  bool ok;
 };
 
 class EndWorker : public AsyncWorker {
 public:
   EndWorker (
       Iterator* iterator
-    , NanCallback *callback
+    , Nan::Callback *callback
   );
 
   virtual ~EndWorker ();
   virtual void Execute ();
   virtual void HandleOKCallback ();
 
-bool executed;
+  bool executed;
 private:
   Iterator* iterator;
 };
 
-} // namespace nlmdb
+} // namespace leveldown
 
 #endif

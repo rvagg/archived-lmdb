@@ -1,22 +1,23 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
 
 #include <node.h>
 #include <node_buffer.h>
 
 #include "database.h"
-#include "nlmdb.h"
+#include "leveldown.h"
 #include "async.h"
 #include "iterator_async.h"
 
-namespace nlmdb {
+namespace leveldown {
 
-/** NEXT WORKER **/
+/** NEXT-MULTI WORKER **/
 
 NextWorker::NextWorker (
     Iterator* iterator
-  , NanCallback *callback
+  , Nan::Callback *callback
   , void (*localCallback)(Iterator*)
 ) : AsyncWorker(NULL, callback)
   , iterator(iterator)
@@ -26,13 +27,12 @@ NextWorker::NextWorker (
 NextWorker::~NextWorker () {}
 
 void NextWorker::Execute () {
-//std::cerr << "NextWorker::Execute: " << iterator->id << std::endl;
-  SetStatus(iterator->Next(&key, &value));
-//std::cerr << "NextWorker::Execute done: " << iterator->id << std::endl;
+  ok = iterator->IteratorNext(result);
+  SetStatus(iterator->rc);
 }
 
 void NextWorker::WorkComplete () {
-  NanScope();
+  Nan::HandleScope scope;
 
   if (status.code == MDB_NOTFOUND || (status.code == 0 && status.error.length() == 0))
     HandleOKCallback();
@@ -41,66 +41,69 @@ void NextWorker::WorkComplete () {
 }
 
 void NextWorker::HandleOKCallback () {
-  NanScope();
+  Nan::HandleScope scope;
+  size_t idx = 0;
 
-//std::cerr << "NextWorker::HandleOKCallback: " << iterator->id << std::endl;
-//std::cerr << "Read [" << std::string((char*)key.mv_data, key.mv_size) << "]=[" << std::string((char*)value.mv_data, value.mv_size) << "]\n";
+  size_t arraySize = result.size() * 2;
+  v8::Local<v8::Array> returnArray = Nan::New<v8::Array>(arraySize);
 
-  if (status.code == MDB_NOTFOUND) {
-    //std::cerr << "run callback, ended MDB_NOTFOUND\n";
-    localCallback(iterator);
-    callback->Run(0, NULL);
-    return;
-  }
+  for(idx = 0; idx < result.size(); ++idx) {
+    std::pair<std::string, std::string> row = result[idx];
+    std::string key = row.first;
+    std::string value = row.second;
 
-  v8::Local<v8::Value> returnKey;
-  if (iterator->keyAsBuffer) {
-    returnKey = NanNewBufferHandle((char*)key.mv_data, key.mv_size);
-  } else {
-    returnKey = v8::String::New((char*)key.mv_data, key.mv_size);
-  }
+    v8::Local<v8::Value> returnKey;
+    if (iterator->keyAsBuffer) {
+      //TODO: use NewBuffer, see database_async.cc
+      returnKey = Nan::CopyBuffer((char*)key.data(), key.size()).ToLocalChecked();
+    } else {
+      returnKey = Nan::New<v8::String>((char*)key.data(), key.size()).ToLocalChecked();
+    }
 
-  v8::Local<v8::Value> returnValue;
-  if (iterator->valueAsBuffer) {
-    returnValue = NanNewBufferHandle((char*)value.mv_data, value.mv_size);
-  } else {
-    returnValue = v8::String::New((char*)value.mv_data, value.mv_size);
+    v8::Local<v8::Value> returnValue;
+    if (iterator->valueAsBuffer) {
+      //TODO: use NewBuffer, see database_async.cc
+      returnValue = Nan::CopyBuffer((char*)value.data(), value.size()).ToLocalChecked();
+    } else {
+      returnValue = Nan::New<v8::String>((char*)value.data(), value.size()).ToLocalChecked();
+    }
+
+    // put the key & value in a descending order, so that they can be .pop:ed in javascript-land
+    returnArray->Set(Nan::New<v8::Integer>(static_cast<int>(arraySize - idx * 2 - 1)), returnKey);
+    returnArray->Set(Nan::New<v8::Integer>(static_cast<int>(arraySize - idx * 2 - 2)), returnValue);
   }
 
   // clean up & handle the next/end state see iterator.cc/checkEndCallback
-  //std::cerr << "run callback, ended FOUND\n";
   localCallback(iterator);
 
   v8::Local<v8::Value> argv[] = {
-      v8::Local<v8::Value>::New(v8::Null())
-    , returnKey
-    , returnValue
+      Nan::Null()
+    , returnArray
+    // when ok === false all data has been read, so it's then finished
+    , Nan::New<v8::Boolean>(!ok)
   };
-
-  callback->Run(3, argv);
+  callback->Call(3, argv);
 }
 
 /** END WORKER **/
 
 EndWorker::EndWorker (
     Iterator* iterator
-  , NanCallback *callback
+  , Nan::Callback *callback
 ) : AsyncWorker(NULL, callback)
   , iterator(iterator)
 {executed=false;};
 
-EndWorker::~EndWorker () {}
+EndWorker::~EndWorker () { }
 
 void EndWorker::Execute () {
   executed = true;
-  //std::cerr << "EndWorker::Execute...\n";
-  iterator->End();
+  iterator->IteratorEnd();
 }
 
 void EndWorker::HandleOKCallback () {
-  //std::cerr << "EndWorker::HandleOKCallback: " << iterator->id << std::endl;
   iterator->Release();
-  callback->Run(0, NULL);
+  callback->Call(0, NULL);
 }
 
-} // namespace nlmdb
+} // namespace leveldown

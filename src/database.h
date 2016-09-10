@@ -1,18 +1,20 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
 
-#ifndef NL_DATABASE_H
-#define NL_DATABASE_H
+#ifndef LD_DATABASE_H
+#define LD_DATABASE_H
 
 #include <map>
 #include <vector>
 #include <node.h>
+#include <nan.h>
 
-#include "nlmdb.h"
+#include "leveldown.h"
 #include "iterator.h"
 
-namespace nlmdb {
+namespace leveldown {
 
 #define DEFAULT_MAPSIZE 10 << 20 // 10 MB
 #define DEFAULT_READERS 126 // LMDB default
@@ -38,25 +40,24 @@ typedef struct OpenOptions {
   bool     notls;
 } OpenOptions;
 
-NAN_METHOD(NLMDB);
+NAN_METHOD(LevelDOWN);
 
 struct Reference {
-  v8::Persistent<v8::Object> handle;
+  Nan::Persistent<v8::Object> handle;
   MDB_val val;
 
   Reference(v8::Local<v8::Value> obj, MDB_val val) : val(val) {
-    v8::Local<v8::Object> _obj = v8::Object::New();
-    _obj->Set(NanSymbol("obj"), obj);
-    NanAssignPersistent(v8::Object, handle, _obj);
+    v8::Local<v8::Object> _obj = Nan::New<v8::Object>();
+    _obj->Set(Nan::New("obj").ToLocalChecked(), obj);
+    handle.Reset(_obj);
   };
-  // TODO: unpersist this baby... probably easier as a class
 };
 
 static inline void ClearReferences (std::vector<Reference *> *references) {
   for (std::vector<Reference *>::iterator it = references->begin()
       ; it != references->end()
       ; ) {
-    DisposeStringOrBufferFromMDVal((*it)->handle, (*it)->val);
+    DisposeStringOrBufferFromSlice((*it)->handle, (*it)->val);
     it = references->erase(it);
   }
   delete references;
@@ -69,14 +70,14 @@ static inline void ClearReferences (std::vector<Reference *> *references) {
   virtual int Execute (MDB_txn *txn, MDB_dbi dbi) =0;
 
  protected:
-  v8::Persistent<v8::Object> persistentHandle;
+  Nan::Persistent<v8::Object> persistentHandle;
   MDB_val key;
 };
 
-class Database : public node::ObjectWrap {
+class Database : public Nan::ObjectWrap {
 public:
   static void Init ();
-  static v8::Handle<v8::Value> NewInstance (v8::Local<v8::String> &location);
+  static v8::Local<v8::Value> NewInstance (v8::Local<v8::String> &location);
 
   md_status OpenDatabase (OpenOptions options);
   void CloseDatabase     ();
@@ -86,31 +87,36 @@ public:
   int DeleteFromDatabase (MDB_val key);
   int NewIterator        (MDB_txn **txn, MDB_cursor **cursor);
   void ReleaseIterator   (uint32_t id);
-  const char* Location() const;
+  uint64_t ApproximateSizeFromDatabase (std::string* start, std::string* end);
+  void GetPropertyFromDatabase (char* property, std::string* value);
+  int BackupDatabase (char* path);
 
-  Database (const char* location);
+  Database (const v8::Local<v8::Value>& from);
   ~Database ();
 
 private:
   MDB_env *env;
   MDB_dbi dbi;
-
-  const char* location;
+  Nan::Utf8String* location;
   uint32_t currentIteratorId;
   void(*pendingCloseWorker);
 
-  std::map< uint32_t, nlmdb::Iterator * > iterators;
+  std::map< uint32_t, leveldown::Iterator * > iterators;
 
   static NAN_METHOD(New);
   static NAN_METHOD(Open);
   static NAN_METHOD(Close);
   static NAN_METHOD(Put);
-  static NAN_METHOD(Get);
   static NAN_METHOD(Delete);
+  static NAN_METHOD(Get);
   static NAN_METHOD(Batch);
+  static NAN_METHOD(Write);
   static NAN_METHOD(Iterator);
+  static NAN_METHOD(ApproximateSize);
+  static NAN_METHOD(GetProperty);
+  static NAN_METHOD(Backup);
 };
 
-} // namespace nlmdb
+} // namespace leveldown
 
 #endif

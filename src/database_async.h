@@ -1,23 +1,23 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
 
-#ifndef NL_DATABASE_ASYNC_H
-#define NL_DATABASE_ASYNC_H
+#ifndef LD_DATABASE_ASYNC_H
+#define LD_DATABASE_ASYNC_H
 
 #include <vector>
 #include <node.h>
-#include <nan.h>
 
 #include "async.h"
 
-namespace nlmdb {
+namespace leveldown {
 
 class OpenWorker : public AsyncWorker {
 public:
   OpenWorker (
-      Database* database
-    , NanCallback *callback
+      Database *database
+    , Nan::Callback *callback
     , OpenOptions options
   );
 
@@ -31,8 +31,8 @@ private:
 class CloseWorker : public AsyncWorker {
 public:
   CloseWorker (
-      Database* database
-    , NanCallback *callback
+      Database *database
+    , Nan::Callback *callback
   );
 
   virtual ~CloseWorker ();
@@ -43,8 +43,8 @@ public:
 class IOWorker    : public AsyncWorker {
 public:
   IOWorker (
-      Database* database
-    , NanCallback *callback
+      Database *database
+    , Nan::Callback *callback
     , MDB_val key
     , v8::Local<v8::Object> &keyHandle
   );
@@ -60,10 +60,11 @@ protected:
 class ReadWorker : public IOWorker {
 public:
   ReadWorker (
-      Database* database
-    , NanCallback *callback
+      Database *database
+    , Nan::Callback *callback
     , MDB_val key
     , bool asBuffer
+    , bool fillCache
     , v8::Local<v8::Object> &keyHandle
   );
 
@@ -79,9 +80,10 @@ private:
 class DeleteWorker : public IOWorker {
 public:
   DeleteWorker (
-      Database* database
-    , NanCallback *callback
+      Database *database
+    , Nan::Callback *callback
     , MDB_val key
+    , bool sync
     , v8::Local<v8::Object> &keyHandle
   );
 
@@ -95,10 +97,11 @@ protected:
 class WriteWorker : public DeleteWorker {
 public:
   WriteWorker (
-      Database* database
-    , NanCallback *callback
+      Database *database
+    , Nan::Callback *callback
     , MDB_val key
     , MDB_val value
+    , bool sync
     , v8::Local<v8::Object> &keyHandle
     , v8::Local<v8::Object> &valueHandle
   );
@@ -112,49 +115,41 @@ private:
   v8::Local<v8::Object> &valueHandle;
 };
 
-/*
-class BatchWorker : public AsyncWorker {
-public:
-  BatchWorker (
-      Database* database
-    , NanCallback *callback
-    , leveldb::WriteBatch* batch
-    , std::vector<Reference>* references
-    , bool sync
-  );
-
-  virtual ~BatchWorker ();
-  virtual void Execute ();
-
-private:
-  leveldb::WriteOptions* options;
-  leveldb::WriteBatch* batch;
-  std::vector<Reference>* references;
-};
-
 class ApproximateSizeWorker : public AsyncWorker {
 public:
   ApproximateSizeWorker (
-      Database* database
-    , NanCallback *callback
-    , MDB_val start
-    , MDB_val end
-    , v8::Local<v8::Object> startHandle
-    , v8::Local<v8::Object> endHandle
+      Database *database
+    , Nan::Callback *callback
+    , std::string* start
+    , std::string* end
   );
 
   virtual ~ApproximateSizeWorker ();
   virtual void Execute ();
   virtual void HandleOKCallback ();
-  virtual void WorkComplete ();
 
   private:
-    leveldb::Range range;
-    v8::Local<v8::Object> startHandle;
-    v8::Local<v8::Object> endHandle;
+    std::string* start;
+    std::string* end;
     uint64_t size;
 };
-*/
-} // namespace nlmdb
+
+class BackupWorker : public AsyncWorker {
+public:
+  BackupWorker (
+      Database *database
+    , Nan::Callback *callback
+    , Nan::Utf8String* path
+  );
+
+  virtual ~BackupWorker ();
+  virtual void Execute ();
+  virtual void HandleOKCallback ();
+
+  private:
+    Nan::Utf8String* path;
+};
+
+} // namespace leveldown
 
 #endif
