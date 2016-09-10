@@ -105,10 +105,8 @@ md_status Database::OpenDatabase (OpenOptions options) {
     env_opt |= MDB_NOTLS;
 
   status.code = mdb_env_create(&env);
-  if (status.code) {
-    mdb_env_close(env);
+  if (status.code)
     return status;
-  }
 
   status.code = mdb_env_set_mapsize(env, options.mapSize);
   if (status.code) {
