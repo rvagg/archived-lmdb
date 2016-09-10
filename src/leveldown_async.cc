@@ -22,7 +22,50 @@ DestroyWorker::~DestroyWorker () {
 }
 
 void DestroyWorker::Execute () {
-  SetStatus("Not implemented.");
+  MDB_env* env;
+  MDB_txn *txn;
+  MDB_dbi dbi;
+  int rc;
+
+  rc = mdb_env_create(&env);
+  if (rc) {
+    SetStatus(rc);
+    return;
+  }
+
+  rc = mdb_env_open(env, **location, 0, 0664);
+  if (rc) {
+    SetStatus(rc);
+    return;
+  }
+
+  rc = mdb_txn_begin(env, NULL, 0, &txn);
+  if (rc) {
+    SetStatus(rc);
+    return;
+  }
+
+  rc = mdb_open(txn, NULL, 0, &dbi);
+  if (rc) {
+    mdb_txn_abort(txn);
+    SetStatus(rc);
+    return;
+  }
+
+  rc = mdb_drop(txn, dbi, 1);
+  if (rc) {
+    mdb_txn_abort(txn);
+    SetStatus(rc);
+    return;
+  }
+
+  rc = mdb_txn_commit(txn);
+  if (rc) {
+    SetStatus(rc);
+    return;
+  }
+
+  mdb_env_close(env);
 }
 
 void DestroyWorker::WorkComplete () {
