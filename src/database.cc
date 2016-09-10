@@ -168,7 +168,7 @@ int Database::PutToDatabase (std::vector< BatchOp* >* operations) {
       ; it++) {
 
     rc = (*it)->Execute(txn, dbi);
-    if (rc) {
+    if (rc != 0 && rc != MDB_NOTFOUND) {
       mdb_txn_abort(txn);
       return rc;
     }
