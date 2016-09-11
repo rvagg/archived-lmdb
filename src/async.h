@@ -26,14 +26,10 @@ protected:
     this->status = status;
 
     if (status.error.length() != 0) {
-      char *e = new char[status.error.length() + 1];
-      strcpy(e, status.error.c_str());
-      SetErrorMessage(e);
+      SetErrorMessage(status.error.c_str());
     } else if (status.code != 0) {
       const char *me = mdb_strerror(status.code);
-      char *e = new char[strlen(me) + 1];
-      strcpy(e, me);
-      SetErrorMessage(e);
+      SetErrorMessage(me);
     }
   }
 
