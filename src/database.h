@@ -83,10 +83,10 @@ public:
 
   md_status OpenDatabase (OpenOptions options);
   void CloseDatabase     ();
-  int PutToDatabase      (MDB_val key, MDB_val value);
-  int PutToDatabase      (std::vector< BatchOp* >* operations);
+  int PutToDatabase      (MDB_val key, MDB_val value, bool sync);
+  int PutToDatabase      (std::vector< BatchOp* >* operations, bool sync);
   int GetFromDatabase    (MDB_val key, std::string& value);
-  int DeleteFromDatabase (MDB_val key);
+  int DeleteFromDatabase (MDB_val key, bool sync);
   int NewCursor          (MDB_txn **txn, MDB_cursor **cursor);
   void ReleaseIterator   (uint32_t id);
   uint64_t ApproximateSizeFromDatabase (MDB_val* start, MDB_val* end);

@@ -185,7 +185,7 @@ void Database::CloseDatabase () {
   mdb_env_close(env);
 }
 
-int Database::PutToDatabase (MDB_val key, MDB_val value) {
+int Database::PutToDatabase (MDB_val key, MDB_val value, bool sync) {
   int rc;
   MDB_txn *txn;
 
@@ -200,11 +200,16 @@ int Database::PutToDatabase (MDB_val key, MDB_val value) {
   }
 
   rc = mdb_txn_commit(txn);
+  if (rc)
+    return rc;
+
+  if (sync)
+    rc = mdb_env_sync(env, 1);
 
   return rc;
 }
 
-int Database::PutToDatabase (std::vector< BatchOp* >* operations) {
+int Database::PutToDatabase (std::vector< BatchOp* >* operations, bool sync) {
   int rc;
   MDB_txn *txn;
 
@@ -224,6 +229,11 @@ int Database::PutToDatabase (std::vector< BatchOp* >* operations) {
   }
 
   rc = mdb_txn_commit(txn);
+  if (rc)
+    return rc;
+
+  if (sync)
+    rc = mdb_env_sync(env, 1);
 
   return rc;
 }
@@ -253,7 +263,7 @@ int Database::GetFromDatabase (MDB_val key, std::string& value) {
   return rc;
 }
 
-int Database::DeleteFromDatabase (MDB_val key) {
+int Database::DeleteFromDatabase (MDB_val key, bool sync) {
   int rc;
   MDB_txn *txn;
 
@@ -268,6 +278,11 @@ int Database::DeleteFromDatabase (MDB_val key) {
   }
 
   rc = mdb_txn_commit(txn);
+  if (rc)
+    return rc;
+
+  if (sync)
+    rc = mdb_env_sync(env, 1);
 
   return rc;
 }
@@ -280,6 +295,10 @@ int Database::NewCursor (MDB_txn **txn, MDB_cursor **cursor) {
     return rc;
 
   rc = mdb_cursor_open(*txn, dbi, cursor);
+  if (rc) {
+    mdb_txn_abort(*txn);
+    return rc;
+  }
 
   return rc;
 }
@@ -531,7 +550,7 @@ NAN_METHOD(Database::Open) {
   options.writeMap = BooleanOptionValue(
       optionsObj
     , "writeMap"
-    , DEFAULT_READONLY
+    , DEFAULT_WRITEMAP
   );
   options.metaSync = BooleanOptionValue(
       optionsObj

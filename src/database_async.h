@@ -90,6 +90,7 @@ public:
   virtual ~DeleteWorker ();
   virtual void Execute ();
   virtual void WorkComplete ();
+  bool sync;
 
 protected:
 };
@@ -109,6 +110,7 @@ public:
   virtual ~WriteWorker ();
   virtual void Execute ();
   virtual void WorkComplete ();
+  bool sync;
 
 private:
   MDB_val value;

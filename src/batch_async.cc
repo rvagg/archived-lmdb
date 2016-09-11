@@ -21,7 +21,7 @@ BatchWriteWorker::BatchWriteWorker (
 BatchWriteWorker::~BatchWriteWorker () {}
 
 void BatchWriteWorker::Execute () {
-  SetStatus(database->PutToDatabase(batch->operations));
+  SetStatus(database->PutToDatabase(batch->operations, batch->sync));
 }
 
 } // namespace leveldown

@@ -128,6 +128,7 @@ DeleteWorker::DeleteWorker (
   , bool sync
   , v8::Local<v8::Object> &keyHandle
 ) : IOWorker(database, callback, key, keyHandle)
+  , sync(sync)
 {
   Nan::HandleScope scope;
 
@@ -137,7 +138,7 @@ DeleteWorker::DeleteWorker (
 DeleteWorker::~DeleteWorker () { }
 
 void DeleteWorker::Execute () {
-  SetStatus(database->DeleteFromDatabase(key));
+  SetStatus(database->DeleteFromDatabase(key, sync));
 }
 
 void DeleteWorker::WorkComplete () {
@@ -174,7 +175,7 @@ WriteWorker::WriteWorker (
 WriteWorker::~WriteWorker () { }
 
 void WriteWorker::Execute () {
-  SetStatus(database->PutToDatabase(key, value));
+  SetStatus(database->PutToDatabase(key, value, sync));
 }
 
 void WriteWorker::WorkComplete () {
