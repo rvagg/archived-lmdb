@@ -24,7 +24,7 @@ namespace leveldown {
 #define DEFAULT_METASYNC true
 #define DEFAULT_MAPASYNC false
 #define DEFAULT_FIXEDMAP false
-#define DEFAULT_NOTLS true
+#define DEFAULT_NOTLS false
 #define DEFAULT_NOSUBDIR false
 
 typedef struct OpenOptions {
