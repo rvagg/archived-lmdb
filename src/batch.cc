@@ -37,7 +37,7 @@ BatchDel::BatchDel (v8::Local<v8::Object> &keyHandle, MDB_val key)
 BatchDel::~BatchDel () {}
 
 int BatchDel::Execute (MDB_txn *txn, MDB_dbi dbi) {
-  return mdb_del(txn, dbi, &key, 0);
+  return mdb_del(txn, dbi, &key, NULL);
 }
 
 BatchPut::BatchPut (

@@ -106,20 +106,31 @@ md_status Database::OpenDatabase (OpenOptions options) {
   }
 
   int env_opt = 0;
+  int txn_opt = 0;
+
   if (!options.sync)
     env_opt |= MDB_NOSYNC;
-  if (options.readOnly)
+
+  if (options.readOnly) {
     env_opt |= MDB_RDONLY;
+    txn_opt |= MDB_RDONLY;
+  }
+
   if (options.writeMap)
     env_opt |= MDB_WRITEMAP;
+
   if (!options.metaSync)
     env_opt |= MDB_NOMETASYNC;
+
   if (options.mapAsync)
     env_opt |= MDB_MAPASYNC;
+
   if (options.fixedMap)
     env_opt |= MDB_FIXEDMAP;
+
   if (!options.notls)
     env_opt |= MDB_NOTLS;
+
   if (options.noSubdir)
     env_opt |= MDB_NOSUBDIR;
 
@@ -147,17 +158,25 @@ md_status Database::OpenDatabase (OpenOptions options) {
 
   MDB_txn *txn;
 
-  status.code = mdb_txn_begin(env, NULL, 0, &txn);
-  if (status.code)
+  status.code = mdb_txn_begin(env, NULL, txn_opt, &txn);
+  if (status.code) {
+    mdb_env_close(env);
     return status;
+  }
 
   status.code = mdb_dbi_open(txn, NULL, 0, &dbi);
   if (status.code) {
     mdb_txn_abort(txn);
+    mdb_env_close(env);
     return status;
   }
 
   status.code = mdb_txn_commit(txn);
+
+  if (status.code) {
+    mdb_env_close(env);
+    return status;
+  }
 
   return status;
 }

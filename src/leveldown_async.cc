@@ -35,19 +35,22 @@ void DestroyWorker::Execute () {
 
   rc = mdb_env_open(env, **location, 0, 0664);
   if (rc) {
+    mdb_env_close(env);
     SetStatus(rc);
     return;
   }
 
   rc = mdb_txn_begin(env, NULL, 0, &txn);
   if (rc) {
+    mdb_env_close(env);
     SetStatus(rc);
     return;
   }
 
-  rc = mdb_open(txn, NULL, 0, &dbi);
+  rc = mdb_dbi_open(txn, NULL, 0, &dbi);
   if (rc) {
     mdb_txn_abort(txn);
+    mdb_env_close(env);
     SetStatus(rc);
     return;
   }
@@ -55,12 +58,14 @@ void DestroyWorker::Execute () {
   rc = mdb_drop(txn, dbi, 1);
   if (rc) {
     mdb_txn_abort(txn);
+    mdb_env_close(env);
     SetStatus(rc);
     return;
   }
 
   rc = mdb_txn_commit(txn);
   if (rc) {
+    mdb_env_close(env);
     SetStatus(rc);
     return;
   }
