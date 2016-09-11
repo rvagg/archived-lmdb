@@ -63,28 +63,45 @@ md_status Database::OpenDatabase (OpenOptions options) {
   // Emulate the behaviour of LevelDB create_if_missing & error_if_exists
   // options, with an additional check for stat == directory
   const __uv_stat__ stat = Stat(**location);
-  if (stat == NULL) {
-    if (options.createIfMissing) {
-      status.code = MakeDirectory(**location);
-      if (status.code) {
-        status.error = "Could not create database workspace.";
+  if (options.noSubdir) {
+    if (stat == NULL) {
+      if (!options.createIfMissing) {
+        status.error = std::string(**location);
+        status.error += " does not exist (createIfMissing is false)";
         return status;
       }
     } else {
-      status.error = std::string(**location);
-      status.error += " does not exist (createIfMissing is false)";
-      return status;
+      if (options.errorIfExists) {
+        status.error = std::string(**location);
+        status.error += " exists (errorIfExists is true)";
+        return status;
+      }
     }
   } else {
-    if (!IsDirectory(stat)) {
-      status.error = std::string(**location);
-      status.error += " exists and is not a directory";
-      return status;
-    }
-    if (options.errorIfExists) {
-      status.error = std::string(**location);
-      status.error += " exists (errorIfExists is true)";
-      return status;
+    if (stat == NULL) {
+      if (options.createIfMissing) {
+        status.code = MakeDirectory(**location);
+        if (status.code) {
+          status.error = std::string(**location);
+          status.error += " cannot be created (createIfMissing is true)";
+          return status;
+        }
+      } else {
+        status.error = std::string(**location);
+        status.error += " does not exist (createIfMissing is false)";
+        return status;
+      }
+    } else {
+      if (!IsDirectory(stat)) {
+        status.error = std::string(**location);
+        status.error += " exists and is not a directory";
+        return status;
+      }
+      if (options.errorIfExists) {
+        status.error = std::string(**location);
+        status.error += " exists (errorIfExists is true)";
+        return status;
+      }
     }
   }
 
@@ -103,6 +120,8 @@ md_status Database::OpenDatabase (OpenOptions options) {
     env_opt |= MDB_FIXEDMAP;
   if (!options.notls)
     env_opt |= MDB_NOTLS;
+  if (options.noSubdir)
+    env_opt |= MDB_NOSUBDIR;
 
   status.code = mdb_env_create(&env);
   if (status.code)
@@ -283,13 +302,22 @@ uint64_t Database::ApproximateSizeFromDatabase (MDB_val* start, MDB_val* end) {
 
 int Database::BackupDatabase (char* path) {
   int rc = 0;
-  const __uv_stat__ stat = Stat(path);
+  unsigned int flags;
 
-  if (stat == NULL)
-    rc = (int)MakeDirectory(path);
+  rc = mdb_env_get_flags(env, &flags);
 
   if (rc != 0)
     return rc;
+
+  if (!(flags & MDB_NOSUBDIR)) {
+    const __uv_stat__ stat = Stat(path);
+
+    if (stat == NULL)
+      rc = (int)MakeDirectory(path);
+
+    if (rc != 0)
+      return rc;
+  }
 
   return mdb_env_copy(env, path);
 }
@@ -501,10 +529,15 @@ NAN_METHOD(Database::Open) {
     , "fixedMap"
     , DEFAULT_FIXEDMAP
   );
-  options.metaSync = BooleanOptionValue(
+  options.notls = BooleanOptionValue(
       optionsObj
     , "notls"
     , DEFAULT_NOTLS
+  );
+  options.noSubdir = BooleanOptionValue(
+      optionsObj
+    , "noSubdir"
+    , DEFAULT_NOSUBDIR
   );
 
   OpenWorker* worker = new OpenWorker(

@@ -25,6 +25,7 @@ namespace leveldown {
 #define DEFAULT_MAPASYNC false
 #define DEFAULT_FIXEDMAP false
 #define DEFAULT_NOTLS true
+#define DEFAULT_NOSUBDIR false
 
 typedef struct OpenOptions {
   bool     createIfMissing;
@@ -38,6 +39,7 @@ typedef struct OpenOptions {
   bool     mapAsync;
   bool     fixedMap;
   bool     notls;
+  bool     noSubdir;
 } OpenOptions;
 
 NAN_METHOD(LevelDOWN);
