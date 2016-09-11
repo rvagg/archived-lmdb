@@ -282,6 +282,15 @@ uint64_t Database::ApproximateSizeFromDatabase (MDB_val* start, MDB_val* end) {
 }
 
 int Database::BackupDatabase (char* path) {
+  int rc = 0;
+  const __uv_stat__ stat = Stat(path);
+
+  if (stat == NULL)
+    rc = (int)MakeDirectory(path);
+
+  if (rc != 0)
+    return rc;
+
   return mdb_env_copy(env, path);
 }
 
