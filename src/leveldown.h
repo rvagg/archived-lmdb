@@ -72,12 +72,12 @@ static inline void DisposeStringOrBufferFromSlice(
       to ## Ch_ = new char[to ## Sz_];                                         \
       to ## Ch_[0] = 0;                                                        \
     } else {                                                                   \
-    to ## Ch_ = new char[to ## Sz_];                                           \
-    to ## Str->WriteUtf8(                                                      \
-        to ## Ch_                                                              \
-      , -1                                                                     \
-      , NULL, v8::String::NO_NULL_TERMINATION                                  \
-    );                                                                         \
+      to ## Ch_ = new char[to ## Sz_];                                         \
+      to ## Str->WriteUtf8(                                                    \
+          to ## Ch_                                                            \
+        , -1                                                                   \
+        , NULL, v8::String::NO_NULL_TERMINATION                                \
+      );                                                                       \
     }                                                                          \
   }                                                                            \
   MDB_val to;                                                                  \
@@ -85,12 +85,11 @@ static inline void DisposeStringOrBufferFromSlice(
   to.mv_size = to ## Sz_;
 
 #define LD_STRING_OR_BUFFER_TO_COPY(to, from, name)                            \
-  size_t to ## Sz_;                                                            \
   if (from->IsNull() || from->IsUndefined()) {                                 \
     ;                                                                          \
   } else if (!from->ToObject().IsEmpty()                                       \
       && node::Buffer::HasInstance(from->ToObject())) {                        \
-    to ## Sz_ = node::Buffer::Length(from->ToObject());                        \
+    size_t to ## Sz_ = node::Buffer::Length(from->ToObject());                 \
     if (to ## Sz_ != 0) {                                                      \
       to = (MDB_val*)malloc(sizeof(MDB_val));                                  \
       to->mv_size = to ## Sz_;                                                 \
@@ -99,7 +98,7 @@ static inline void DisposeStringOrBufferFromSlice(
     }                                                                          \
   } else {                                                                     \
     v8::Local<v8::String> to ## Str_ = from->ToString();                       \
-    to ## Sz_ = to ## Str_->Utf8Length();                                      \
+    size_t to ## Sz_ = to ## Str_->Utf8Length();                               \
     if (to ## Sz_ != 0) {                                                      \
       to = (MDB_val*)malloc(sizeof(MDB_val));                                  \
       to->mv_size = to ## Sz_;                                                 \
