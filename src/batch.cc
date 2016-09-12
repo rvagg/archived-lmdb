@@ -67,12 +67,7 @@ int BatchPut::Execute (MDB_txn *txn, MDB_dbi dbi) {
   return mdb_put(txn, dbi, &key, &value, 0);
 }
 
-WriteBatch::WriteBatch (
-    leveldown::Database* database
-  , bool sync
-) : database(database)
-  , sync(sync)
-{
+WriteBatch::WriteBatch (leveldown::Database* database, bool sync) : database(database) {
   operations = new std::vector<BatchOp*>;
   written = false;
 }

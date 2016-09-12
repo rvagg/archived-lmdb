@@ -54,7 +54,6 @@ public:
 
   std::vector< BatchOp* >* operations;
   Database* database;
-  bool sync;
 
 private:
   bool written;
