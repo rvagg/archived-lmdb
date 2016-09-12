@@ -268,6 +268,10 @@ int Database::DeleteFromDatabase (MDB_val key) {
   }
 
   rc = mdb_txn_commit(txn);
+  if (rc) {
+    mdb_txn_abort(txn);
+    return rc;
+  }
 
   return rc;
 }
@@ -280,6 +284,10 @@ int Database::NewCursor (MDB_txn **txn, MDB_cursor **cursor) {
     return rc;
 
   rc = mdb_cursor_open(*txn, dbi, cursor);
+  if (rc) {
+    mdb_txn_abort(*txn);
+    return rc;
+  }
 
   return rc;
 }
@@ -531,7 +539,7 @@ NAN_METHOD(Database::Open) {
   options.writeMap = BooleanOptionValue(
       optionsObj
     , "writeMap"
-    , DEFAULT_READONLY
+    , DEFAULT_WRITEMAP
   );
   options.metaSync = BooleanOptionValue(
       optionsObj
