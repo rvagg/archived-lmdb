@@ -1,32 +1,49 @@
 {
   "name": "lmdb",
   "description": "A Low-level, LevelDOWN-compatible, Node.js LMDB binding",
+  "version": "0.2.0",
   "contributors": [
     "Rod Vagg <r@va.gg> (https://github.com/rvagg)"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rvagg/lmdb.git"
+  },
+  "homepage": "https://github.com/rvagg/lmdb",
   "keywords": [
     "lmdb",
     "mdb",
     "level",
     "leveldown"
   ],
-  "version": "0.2.0",
-  "main": "lmdb.js",
+  "main": "leveldown.js",
   "dependencies": {
-    "bindings": "~1.1.0",
-    "nan": "~0.3.1"
+    "abstract-leveldown": "~2.4.0",
+    "bindings": "~1.2.1",
+    "fast-future": "~1.0.0",
+    "nan": "~2.4.0",
+    "prebuild": "^4.1.1"
   },
   "devDependencies": {
-    "tap": "*",
-    "rimraf": "*",
-    "abstract-leveldown": "*"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/rvagg/lmdb.git"
+    "async": "~1.5.0",
+    "delayed": "~1.0.1",
+    "du": "~0.1.0",
+    "faucet": "0.0.1",
+    "mkfiletree": "~1.0.1",
+    "monotonic-timestamp": "~0.0.8",
+    "node-uuid": "~1.4.3",
+    "optimist": "~0.6.1",
+    "readfiletree": "~0.0.1",
+    "rimraf": "~2.5.0",
+    "slump": "~2.0.0",
+    "tape": "~4.5.1"
   },
   "scripts": {
-    "test": "tap ./test.js test/*-test.js --stderr"
+    "install": "prebuild --install",
+    "test": "tape test/*-test.js | faucet",
+    "rebuild": "prebuild --compile",
+    "prebuild": "prebuild --all --strip --verbose"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "gypfile": true
 }

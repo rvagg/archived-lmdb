@@ -1,2 +1,16 @@
 node_modules/
 build/
+build-pre-gyp/
+Release/
+libleveldb.so
+libleveldb.a
+leakydb
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.tlog
+*.obj
+*.1sdk.pdb
+*.lastbuildstate
+npm-debug.log
+prebuilds/

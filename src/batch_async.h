@@ -1,9 +1,10 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
 
-#ifndef NL_BATCH_ASYNC_H
-#define NL_BATCH_ASYNC_H
+#ifndef LD_BATCH_ASYNC_H
+#define LD_BATCH_ASYNC_H
 
 #include <node.h>
 #include <nan.h>
@@ -12,11 +13,14 @@
 #include "batch.h"
 #include "database.h"
 
-namespace nlmdb {
+namespace leveldown {
 
 class BatchWriteWorker : public AsyncWorker {
 public:
-  BatchWriteWorker (WriteBatch* batch, NanCallback *callback);
+  BatchWriteWorker (
+      WriteBatch* batch
+    , Nan::Callback *callback
+  );
 
   virtual ~BatchWriteWorker ();
   virtual void Execute ();
@@ -25,6 +29,6 @@ private:
   WriteBatch* batch;
 };
 
-} // namespace nlmdb
+} // namespace leveldown
 
 #endif

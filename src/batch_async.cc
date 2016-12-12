@@ -1,23 +1,27 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
+
 
 #include "batch.h"
 #include "batch_async.h"
 
-namespace nlmdb {
+namespace leveldown {
+
+/** NEXT WORKER **/
 
 BatchWriteWorker::BatchWriteWorker (
     WriteBatch* batch
-  , NanCallback *callback
+  , Nan::Callback *callback
 ) : AsyncWorker(batch->database, callback)
   , batch(batch)
 {};
 
-BatchWriteWorker::~BatchWriteWorker () { }
+BatchWriteWorker::~BatchWriteWorker () {}
 
 void BatchWriteWorker::Execute () {
   SetStatus(database->PutToDatabase(batch->operations));
 }
 
-} // namespace nlmdb
+} // namespace leveldown

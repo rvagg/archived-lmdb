@@ -1,4 +1,4 @@
-const test      = require('tap').test
+const test      = require('tape')
     , leveldown = require('../')
     , abstract  = require('abstract-leveldown/abstract/leveldown-test')
 

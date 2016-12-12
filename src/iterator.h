@@ -1,80 +1,108 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
 
-#ifndef NL_ITERATOR_H
-#define NL_ITERATOR_H
+#ifndef LD_ITERATOR_H
+#define LD_ITERATOR_H
 
 #include <node.h>
+#include <vector>
 #include <nan.h>
 
-#include "nlmdb.h"
+#include "leveldown.h"
 #include "database.h"
+#include "async.h"
 
-namespace nlmdb {
+namespace leveldown {
 
 class Database;
 class AsyncWorker;
 
-NAN_METHOD(CreateIterator);
-
-class Iterator : public node::ObjectWrap {
+class Iterator : public Nan::ObjectWrap {
 public:
   static void Init ();
-  static v8::Handle<v8::Object> NewInstance (
-      v8::Handle<v8::Object> database
-    , v8::Handle<v8::Number> id
-    , v8::Handle<v8::Object> optionsObj
+  static v8::Local<v8::Object> NewInstance (
+      v8::Local<v8::Object> database
+    , v8::Local<v8::Number> id
+    , v8::Local<v8::Object> optionsObj
   );
 
   Iterator (
-      Database    *database
-    , uint32_t     id
-    , std::string *start
-    , std::string *end
-    , bool         reverse
-    , bool         keys
-    , bool         values
-    , int          limit
-    , bool         keyAsBuffer
-    , bool         valueAsBuffer
+      Database* database
+    , uint32_t id
+    , MDB_val* start
+    , MDB_val* end
+    , bool reverse
+    , bool keys
+    , bool values
+    , int limit
+    , MDB_val* lt
+    , MDB_val* lte
+    , MDB_val* gt
+    , MDB_val* gte
+    , bool fillCache
+    , bool keyAsBuffer
+    , bool valueAsBuffer
+    , size_t highWaterMark
   );
 
   ~Iterator ();
 
-  int          Next    (MDB_val *key, MDB_val *value);
-  void         End     ();
-  void         Release ();
+  bool IteratorNext (std::vector<std::pair<std::string, std::string> >& result);
+  void IteratorEnd ();
+  void Release ();
+
+  int Compare (MDB_val* b);
+  int CompareRev (MDB_val* a);
+  void Seek (MDB_val* k);
+  void Prev ();
+  void Next ();
+  void SeekToFirst ();
+  void SeekToLast ();
+  bool IsValid ();
 
 private:
-  Database    *database;
-  uint32_t     id;
+  Database* database;
+  uint32_t id;
   MDB_txn     *txn;
   MDB_cursor  *cursor;
-  std::string *start;
-  std::string *end;
-  bool         reverse;
-  bool         keys;
-  bool         values;
-  int          limit;
-  int          count;
+  MDB_val* start;
+  MDB_val* end;
+  MDB_val currentKey;
+  MDB_val currentValue;
+  bool seeking;
+  bool reverse;
+  bool keys;
+  bool values;
+  int limit;
+  MDB_val* lt;
+  MDB_val* lte;
+  MDB_val* gt;
+  MDB_val* gte;
+  int count;
+  size_t highWaterMark;
 
 public:
-  bool         keyAsBuffer;
-  bool         valueAsBuffer;
-  bool         started;
-  bool         nexting;
-  bool         ended;
+  bool keyAsBuffer;
+  bool valueAsBuffer;
+  int rc;
+  bool started;
+  bool alloc;
+  bool nexting;
+  bool ended;
   AsyncWorker* endWorker;
 
 private:
-  int          GetIterator ();
+  bool Read (std::string& key, std::string& value);
+  bool GetIterator ();
 
   static NAN_METHOD(New);
+  static NAN_METHOD(Seek);
   static NAN_METHOD(Next);
   static NAN_METHOD(End);
 };
 
-} // namespace nlmdb
+} // namespace leveldown
 
 #endif

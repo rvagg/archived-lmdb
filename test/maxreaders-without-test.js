@@ -1,4 +1,4 @@
-const test       = require('tap').test
+const test       = require('tape')
     , lmdb       = require('../')
     , testCommon = require('abstract-leveldown/testCommon')
 
@@ -18,9 +18,9 @@ test('test default maxReaders should bork', function (t) {
           // table is full.
           var iter = db.iterator();
           iter.next(function(err) {
-            var correctError = err
+            var correctError = err && err.message
                 === 'MDB_READERS_FULL: Environment maxreaders limit reached';
-            t.ok(err, 'got read error from last concurrent reader');
+            t.ok(correctError, 'got read error from last concurrent reader');
 
             // Force exit; no cleanup
             // ----------------------
@@ -35,7 +35,8 @@ test('test default maxReaders should bork', function (t) {
             //
             // This doesn't affect the test's validity, as the reader limit
             // is what counts here.
-            process.exit(0);
+            // process.exit(0);
+            t.end();
           })
         }
       }

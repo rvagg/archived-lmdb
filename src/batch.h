@@ -1,16 +1,12 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
- */
-
-#ifndef NL_BATCH_H
-#define NL_BATCH_H
+#ifndef LD_BATCH_H
+#define LD_BATCH_H
 
 #include <vector>
+#include <node.h>
 
-#include "nlmdb.h"
 #include "database.h"
 
-namespace nlmdb {
+namespace leveldown {
 
 class BatchDel : public BatchOp {
  public:
@@ -35,16 +31,16 @@ protected:
   MDB_val value;
 };
 
-class WriteBatch : public node::ObjectWrap {
- public:
+class WriteBatch : public Nan::ObjectWrap {
+public:
   static void Init();
-  static v8::Handle<v8::Value> NewInstance (
-      v8::Handle<v8::Object> database
-    , v8::Handle<v8::Object> optionsObj
+  static v8::Local<v8::Value> NewInstance (
+      v8::Local<v8::Object> database
+    , v8::Local<v8::Object> optionsObj
   );
 
-  WriteBatch  (Database* database);
-  ~WriteBatch();
+  WriteBatch  (Database* database, bool sync);
+  ~WriteBatch ();
 
   void Put    (
       v8::Local<v8::Object> &keyHandle
@@ -59,10 +55,8 @@ class WriteBatch : public node::ObjectWrap {
   std::vector< BatchOp* >* operations;
   Database* database;
 
- private:
+private:
   bool written;
-
-  static v8::Local<v8::Function> constructor;
 
   static NAN_METHOD(New);
   static NAN_METHOD(Put);
@@ -71,6 +65,6 @@ class WriteBatch : public node::ObjectWrap {
   static NAN_METHOD(Write);
 };
 
-} // namespace nlmdb
+} // namespace leveldown
 
 #endif

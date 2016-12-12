@@ -1,19 +1,17 @@
-const test       = require('tap').test
+const test       = require('tape')
     , testCommon = require('abstract-leveldown/testCommon')
     , cleanup    = testCommon.cleanup
     , location   = testCommon.location
     , leveldown  = require('../')
 
-function makeTest (name, plan, testFn) {
+function makeTest (name, testFn) {
   test(name, function (t) {
-    t.plan(plan + 3)
     cleanup(function () {
       var loc  = location()
         , db   = leveldown(loc)
         , done = function (close) {
             if (close === false)
               return cleanup(t.end.bind(t))
-
             db.close(function (err) {
               t.notOk(err, 'no error from close()')
               cleanup(t.end.bind(t))

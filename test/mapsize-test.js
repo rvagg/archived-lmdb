@@ -1,4 +1,4 @@
-const test       = require('tap').test
+const test       = require('tape')
     , lmdb       = require('../')
     , testCommon = require('abstract-leveldown/testCommon')
       // 1MBish

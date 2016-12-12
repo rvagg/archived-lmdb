@@ -1,41 +1,39 @@
-/* Copyright (c) 2013 Rod Vagg
- * MIT +no-false-attribs License <https://github.com/rvagg/lmdb/blob/master/LICENSE>
+/* Copyright (c) 2012-2016 LevelDOWN contributors
+ * See list at <https://github.com/level/leveldown#contributing>
+ * MIT License <https://github.com/level/leveldown/blob/master/LICENSE.md>
  */
 
 #include <node.h>
 #include <node_buffer.h>
 #include <string.h>
 #include <nan.h>
- 
+
 #include "database.h"
 #include "iterator.h"
 #include "iterator_async.h"
+#include "common.h"
 
-namespace nlmdb {
+namespace leveldown {
 
-inline int compare(std::string *str, MDB_val *value) {
-  const int min_len = (str->length() < value->mv_size)
-      ? str->length()
-      : value->mv_size;
-  int r = memcmp(str->c_str(), (char *)value->mv_data, min_len);
-  if (r == 0) {
-    if (str->length() < value->mv_size) r = -1;
-    else if (str->length() > value->mv_size) r = +1;
-  }
-  return r;
-}
+static Nan::Persistent<v8::FunctionTemplate> iterator_constructor;
 
 Iterator::Iterator (
-    Database    *database
-  , uint32_t     id
-  , std::string *start
-  , std::string *end
-  , bool         reverse
-  , bool         keys
-  , bool         values
-  , int          limit
-  , bool         keyAsBuffer
-  , bool         valueAsBuffer
+    Database* database
+  , uint32_t id
+  , MDB_val* start
+  , MDB_val* end
+  , bool reverse
+  , bool keys
+  , bool values
+  , int limit
+  , MDB_val* lt
+  , MDB_val* lte
+  , MDB_val* gt
+  , MDB_val* gte
+  , bool fillCache
+  , bool keyAsBuffer
+  , bool valueAsBuffer
+  , size_t highWaterMark
 ) : database(database)
   , id(id)
   , start(start)
@@ -44,273 +42,482 @@ Iterator::Iterator (
   , keys(keys)
   , values(values)
   , limit(limit)
+  , lt(lt)
+  , lte(lte)
+  , gt(gt)
+  , gte(gte)
+  , highWaterMark(highWaterMark)
   , keyAsBuffer(keyAsBuffer)
   , valueAsBuffer(valueAsBuffer)
 {
-  count     = 0;
-  started   = false;
-  nexting   = false;
-  ended     = false;
-  endWorker = NULL;
+  Nan::HandleScope scope;
+
+  started    = false;
+  rc         = database->NewCursor(&txn, &cursor);
+  alloc      = rc == 0;
+  count      = 0;
+  seeking    = false;
+  nexting    = false;
+  ended      = false;
+  endWorker  = NULL;
 };
 
 Iterator::~Iterator () {
-  if (start != NULL)
-    delete start;
-  if (end != NULL)
-    delete end;
+  LD_FREE_COPY(start);
+  LD_FREE_COPY(end);
+  LD_FREE_COPY(lt);
+  LD_FREE_COPY(gt);
+  LD_FREE_COPY(lte);
+  LD_FREE_COPY(gte);
 };
 
-int Iterator::Next (MDB_val *key, MDB_val *value) {
-  //std::cerr << "Iterator::Next " << started << ", " << id << std::endl;
-  int rc = 0;
-
+bool Iterator::GetIterator () {
   if (!started) {
-    //std::cerr << "opening cursor... " << std::endl;
-    rc = database->NewIterator(&txn, &cursor);
-    //std::cerr << "opened cursor!! " << cursor << ", " << strerror(rc) << std::endl;
-    if (rc) {
-      //std::cerr << "returning 0: " << rc << std::endl;
-      return rc;
-    }
+    started = true;
+
+    if (!alloc)
+      return false;
 
     if (start != NULL) {
-      key->mv_data = (void*)start->data();
-      key->mv_size = start->length();
-      rc = mdb_cursor_get(cursor, key, value, MDB_SET_RANGE);
+      Seek(start);
+
       if (reverse) {
-        if (rc == MDB_NOTFOUND)
-          rc = mdb_cursor_get(cursor, key, value, MDB_LAST);
-        else if (rc == 0 && compare(start, key))
-          rc = mdb_cursor_get(cursor, key, value, MDB_PREV);
+        if (rc == MDB_NOTFOUND) {
+          // if it's past the last key, step back
+          SeekToLast();
+        } else if (rc == 0) {
+          if (lt != NULL) {
+            if (CompareRev(lt) <= 0)
+              Prev();
+          } else if (lte != NULL) {
+            if (CompareRev(lte) < 0)
+              Prev();
+          } else if (start != NULL) {
+            if (CompareRev(start))
+              Prev();
+          }
+        }
+
+        if (IsValid() && lt != NULL) {
+          if (CompareRev(lt) <= 0)
+            Prev();
+        }
+      } else {
+        if (IsValid() && gt != NULL
+            && CompareRev(gt) == 0)
+          Next();
       }
     } else if (reverse) {
-      rc = mdb_cursor_get(cursor, key, value, MDB_LAST);
+      SeekToLast();
     } else {
-      rc = mdb_cursor_get(cursor, key, value, MDB_FIRST);
+      SeekToFirst();
     }
 
-    started = true;
-    //std::cerr << "Started " << started << std::endl;
-  } else {
-    //std::cerr << "started! getting cursor..." << std::endl;
-    if (reverse)
-      rc = mdb_cursor_get(cursor, key, value, MDB_PREV);
-    else
-      rc = mdb_cursor_get(cursor, key, value, MDB_NEXT);
-    //std::cerr << "started! got cursor..." << std::endl;
+    return true;
   }
-
-  if (rc) {
-    //std::cerr << "returning 1: " << rc << std::endl;
-    return rc;
-  }
-
-  //std::cerr << "***" << std::string((const char*)key->mv_data, key->mv_size) << std::endl;
-  //if (end != NULL)
-    //std::cerr << "***end=" << end->c_str() << ", " << reverse << ", " << compare(end, key) << std::endl;
-
-  // 'end' here is an inclusive test
-  if ((limit < 0 || ++count <= limit)
-      && (end == NULL
-          || (reverse && compare(end, key) <= 0)
-          || (!reverse && compare(end, key) >= 0))) {
-    return 0; // good to continue
-  }
-
-  key = 0;
-  value = 0;
-  return MDB_NOTFOUND;
+  return false;
 }
 
-void Iterator::End () {
-  //std::cerr << "Iterator::End " << started << ", " << id << std::endl;
-  if (started) {
+bool Iterator::Read (std::string& key, std::string& value) {
+  // if it's not the first call, move to next item.
+  if (!GetIterator() && !seeking) {
+    if (!IsValid())
+      return false;
+    if (reverse)
+      Prev();
+    else
+      Next();
+  }
+
+  seeking = false;
+
+  // now check if this is the end or not, if not then return the key & value
+  if (IsValid()) {
+    int isEnd = end == NULL ? 1 : CompareRev(end);
+
+    if ((limit < 0 || ++count <= limit)
+      && (end == NULL
+          || (reverse && (isEnd <= 0))
+          || (!reverse && (isEnd >= 0)))
+      && ( lt  != NULL ? (CompareRev(lt) > 0)
+         : lte != NULL ? (CompareRev(lte) >= 0)
+         : true )
+      && ( gt  != NULL ? (CompareRev(gt) < 0)
+         : gte != NULL ? (CompareRev(gte) <= 0)
+         : true )
+    ) {
+      if (keys)
+        key.assign((char *)currentKey.mv_data, currentKey.mv_size);
+      if (values)
+        value.assign((char *)currentValue.mv_data, currentValue.mv_size);
+      return true;
+    }
+    // rc = MDB_NOTFOUND;
+  }
+
+  return false;
+}
+
+bool Iterator::IteratorNext (std::vector<std::pair<std::string, std::string> >& result) {
+  size_t size = 0;
+  while(true) {
+    std::string key, value;
+    bool ok = Read(key, value);
+
+    if (ok) {
+      result.push_back(std::make_pair(key, value));
+      size = size + key.size() + value.size();
+
+      if (size > highWaterMark)
+        return true;
+
+    } else {
+      return false;
+    }
+  }
+}
+
+void Iterator::IteratorEnd () {
+  if (alloc) {
     mdb_cursor_close(cursor);
     mdb_txn_abort(txn);
   }
 }
 
 void Iterator::Release () {
-  //std::cerr << "Iterator::Release " << started << ", " << id << std::endl;
   database->ReleaseIterator(id);
 }
 
 void checkEndCallback (Iterator* iterator) {
   iterator->nexting = false;
   if (iterator->endWorker != NULL) {
-    NanAsyncQueueWorker(iterator->endWorker);
+    Nan::AsyncQueueWorker(iterator->endWorker);
     iterator->endWorker = NULL;
   }
 }
 
-NAN_METHOD(Iterator::Next) {
-  NanScope();
+int Iterator::Compare (MDB_val* b) {
+  return mdb_cmp(txn, database->dbi, &currentKey, b);
+}
 
-  Iterator* iterator = node::ObjectWrap::Unwrap<Iterator>(args.This());
+int Iterator::CompareRev (MDB_val* a) {
+  return mdb_cmp(txn, database->dbi, a, &currentKey);
+}
 
-  if (args.Length() == 0 || !args[0]->IsFunction()) {
-    return NanThrowError("next() requires a callback argument");
+void Iterator::Seek (MDB_val* k) {
+  currentKey.mv_data = k->mv_data;
+  currentKey.mv_size = k->mv_size;
+  rc = mdb_cursor_get(cursor, &currentKey, &currentValue, MDB_SET_RANGE);
+}
+
+void Iterator::Prev () {
+  rc = mdb_cursor_get(cursor, &currentKey, &currentValue, MDB_PREV);
+}
+
+void Iterator::Next () {
+  rc = mdb_cursor_get(cursor, &currentKey, &currentValue, MDB_NEXT);
+}
+
+void Iterator::SeekToFirst () {
+  rc = mdb_cursor_get(cursor, &currentKey, &currentValue, MDB_FIRST);
+}
+
+void Iterator::SeekToLast () {
+  rc = mdb_cursor_get(cursor, &currentKey, &currentValue, MDB_LAST);
+}
+
+bool Iterator::IsValid () {
+  return rc == 0;
+}
+
+NAN_METHOD(Iterator::Seek) {
+  Iterator* iterator = Nan::ObjectWrap::Unwrap<Iterator>(info.This());
+
+  iterator->GetIterator();
+
+  if (!iterator->IsValid()) {
+    info.GetReturnValue().Set(info.Holder());
+    return;
   }
 
-  v8::Local<v8::Function> callback = args[0].As<v8::Function>();
+  Nan::Utf8String key(info[0]);
+
+  MDB_val k;
+  k.mv_data = (void*)*key;
+  k.mv_size = key.length();
+
+  iterator->Seek(&k);
+  iterator->seeking = true;
+
+  if (iterator->IsValid()) {
+    int cmp = iterator->Compare(&k);
+    if (cmp > 0 && iterator->reverse) {
+      iterator->Prev();
+    } else if (cmp < 0 && !iterator->reverse) {
+      iterator->Next();
+    }
+  } else {
+    if (iterator->reverse) {
+      iterator->SeekToLast();
+    } else {
+      iterator->SeekToFirst();
+    }
+    if (iterator->IsValid()) {
+      int cmp = iterator->Compare(&k);
+      if (cmp > 0 && iterator->reverse) {
+        iterator->SeekToFirst();
+        if (iterator->IsValid())
+          iterator->Prev();
+      } else if (cmp < 0 && !iterator->reverse) {
+        iterator->SeekToLast();
+        if (iterator->IsValid())
+          iterator->Next();
+      }
+    }
+  }
+
+  info.GetReturnValue().Set(info.Holder());
+}
+
+NAN_METHOD(Iterator::Next) {
+  Iterator* iterator = Nan::ObjectWrap::Unwrap<Iterator>(info.This());
+
+  if (info.Length() == 0 || !info[0]->IsFunction()) {
+    return Nan::ThrowError("next() requires a callback argument");
+  }
+
+  v8::Local<v8::Function> callback = info[0].As<v8::Function>();
 
   if (iterator->ended) {
-    NL_RETURN_CALLBACK_OR_ERROR(callback, "cannot call next() after end()")
+    LD_RETURN_CALLBACK_OR_ERROR(callback, "cannot call next() after end()")
   }
 
   if (iterator->nexting) {
-    NL_RETURN_CALLBACK_OR_ERROR(callback, "cannot call next() before previous next() has completed")
+    LD_RETURN_CALLBACK_OR_ERROR(callback, "cannot call next() before previous next() has completed")
   }
 
   NextWorker* worker = new NextWorker(
       iterator
-    , new NanCallback(callback)
+    , new Nan::Callback(callback)
     , checkEndCallback
   );
+  // persist to prevent accidental GC
+  v8::Local<v8::Object> _this = info.This();
+  worker->SaveToPersistent("iterator", _this);
   iterator->nexting = true;
-  NanAsyncQueueWorker(worker);
+  Nan::AsyncQueueWorker(worker);
 
-  NanReturnValue(args.Holder());
+  info.GetReturnValue().Set(info.Holder());
 }
 
 NAN_METHOD(Iterator::End) {
-  NanScope();
+  Iterator* iterator = Nan::ObjectWrap::Unwrap<Iterator>(info.This());
 
-  Iterator* iterator = node::ObjectWrap::Unwrap<Iterator>(args.This());
-  //std::cerr << "Iterator::End" << iterator->id << ", " << iterator->nexting << ", " << iterator->ended << std::endl;
-
-  if (args.Length() == 0 || !args[0]->IsFunction()) {
-    return NanThrowError("end() requires a callback argument");
+  if (info.Length() == 0 || !info[0]->IsFunction()) {
+    return Nan::ThrowError("end() requires a callback argument");
   }
 
-  v8::Local<v8::Function> callback = v8::Local<v8::Function>::Cast(args[0]);
+  v8::Local<v8::Function> callback = v8::Local<v8::Function>::Cast(info[0]);
 
   if (iterator->ended) {
-    NL_RETURN_CALLBACK_OR_ERROR(callback, "end() already called on iterator")
-  }
-
-  EndWorker* worker = new EndWorker(
-      iterator
-    , new NanCallback(callback)
-  );
-  iterator->ended = true;
-
-  if (iterator->nexting) {
-    // waiting for a next() to return, queue the end
-    //std::cerr << "Iterator is nexting: " << iterator->id << std::endl;
-    iterator->endWorker = worker;
+    LD_RETURN_CALLBACK_OR_ERROR(callback, "cannot call end() twice")
   } else {
-    //std::cerr << "Iterator can be ended: " << iterator->id << std::endl;
-    NanAsyncQueueWorker(worker);
+    EndWorker* worker = new EndWorker(
+        iterator
+      , new Nan::Callback(callback)
+    );
+    // persist to prevent accidental GC
+    v8::Local<v8::Object> _this = info.This();
+    worker->SaveToPersistent("iterator", _this);
+    iterator->ended = true;
+
+    if (iterator->nexting) {
+      // waiting for a next() to return, queue the end
+      iterator->endWorker = worker;
+    } else {
+      Nan::AsyncQueueWorker(worker);
+    }
   }
 
-  NanReturnValue(args.Holder());
+  info.GetReturnValue().Set(info.Holder());
 }
-
-static v8::Persistent<v8::FunctionTemplate> iterator_constructor;
 
 void Iterator::Init () {
-  NanScope();
-
-  v8::Local<v8::FunctionTemplate> tpl = v8::FunctionTemplate::New(Iterator::New);
-  NanAssignPersistent(v8::FunctionTemplate, iterator_constructor, tpl);
-  tpl->SetClassName(NanSymbol("Iterator"));
+  v8::Local<v8::FunctionTemplate> tpl =
+      Nan::New<v8::FunctionTemplate>(Iterator::New);
+  iterator_constructor.Reset(tpl);
+  tpl->SetClassName(Nan::New("Iterator").ToLocalChecked());
   tpl->InstanceTemplate()->SetInternalFieldCount(1);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "next", Iterator::Next);
-  NODE_SET_PROTOTYPE_METHOD(tpl, "end", Iterator::End);
+  Nan::SetPrototypeMethod(tpl, "seek", Iterator::Seek);
+  Nan::SetPrototypeMethod(tpl, "next", Iterator::Next);
+  Nan::SetPrototypeMethod(tpl, "end", Iterator::End);
 }
 
-v8::Handle<v8::Object> Iterator::NewInstance (
-        v8::Handle<v8::Object> database
-      , v8::Handle<v8::Number> id
-      , v8::Handle<v8::Object> optionsObj
+v8::Local<v8::Object> Iterator::NewInstance (
+        v8::Local<v8::Object> database
+      , v8::Local<v8::Number> id
+      , v8::Local<v8::Object> optionsObj
     ) {
 
-  NanScope();
+  Nan::EscapableHandleScope scope;
 
+  Nan::MaybeLocal<v8::Object> maybeInstance;
   v8::Local<v8::Object> instance;
-
   v8::Local<v8::FunctionTemplate> constructorHandle =
-      NanPersistentToLocal(iterator_constructor);
+      Nan::New<v8::FunctionTemplate>(iterator_constructor);
 
   if (optionsObj.IsEmpty()) {
-    v8::Handle<v8::Value> argv[] = { database, id };
-    instance = constructorHandle->GetFunction()->NewInstance(2, argv);
+    v8::Local<v8::Value> argv[2] = { database, id };
+    maybeInstance = Nan::NewInstance(constructorHandle->GetFunction(), 2, argv);
   } else {
-    v8::Handle<v8::Value> argv[] = { database, id, optionsObj };
-    instance = constructorHandle->GetFunction()->NewInstance(3, argv);
+    v8::Local<v8::Value> argv[3] = { database, id, optionsObj };
+    maybeInstance = Nan::NewInstance(constructorHandle->GetFunction(), 3, argv);
   }
 
-  return instance;
+  if (maybeInstance.IsEmpty())
+    Nan::ThrowError("Could not create new Iterator instance");
+  else
+    instance = maybeInstance.ToLocalChecked();
+
+  return scope.Escape(instance);
 }
 
 NAN_METHOD(Iterator::New) {
-  NanScope();
+  Database* database = Nan::ObjectWrap::Unwrap<Database>(info[0]->ToObject());
 
-  Database* database = node::ObjectWrap::Unwrap<Database>(args[0]->ToObject());
-
-  //TODO: remove this, it's only here to make NL_STRING_OR_BUFFER_TO_MDVAL happy
-  v8::Handle<v8::Function> callback;
-
-  std::string* start = NULL;
-  std::string* end = NULL;
+  MDB_val* start = NULL;
+  MDB_val* end = NULL;
   int limit = -1;
+  // default highWaterMark from Readble-streams
+  size_t highWaterMark = 16 * 1024;
 
-  v8::Local<v8::Value> id = args[1];
+  v8::Local<v8::Value> id = info[1];
 
   v8::Local<v8::Object> optionsObj;
 
-  if (args.Length() > 1 && args[2]->IsObject()) {
-    optionsObj = v8::Local<v8::Object>::Cast(args[2]);
+  v8::Local<v8::Object> ltHandle;
+  v8::Local<v8::Object> lteHandle;
+  v8::Local<v8::Object> gtHandle;
+  v8::Local<v8::Object> gteHandle;
 
-    if (optionsObj->Has(NanSymbol("start"))
-        && (node::Buffer::HasInstance(optionsObj->Get(NanSymbol("start")))
-          || optionsObj->Get(NanSymbol("start"))->IsString())) {
+  MDB_val* lt = NULL;
+  MDB_val* lte = NULL;
+  MDB_val* gt = NULL;
+  MDB_val* gte = NULL;
 
-      v8::Local<v8::Value> startBuffer =
-          v8::Local<v8::Value>::New(optionsObj->Get(NanSymbol("start")));
+  //default to forward.
+  bool reverse = false;
+
+  if (info.Length() > 1 && info[2]->IsObject()) {
+    optionsObj = v8::Local<v8::Object>::Cast(info[2]);
+
+    reverse = BooleanOptionValue(optionsObj, "reverse");
+
+    if (optionsObj->Has(Nan::New("start").ToLocalChecked())
+        && (node::Buffer::HasInstance(optionsObj->Get(Nan::New("start").ToLocalChecked()))
+          || optionsObj->Get(Nan::New("start").ToLocalChecked())->IsString())) {
+
+      v8::Local<v8::Value> startBuffer = optionsObj->Get(Nan::New("start").ToLocalChecked());
 
       // ignore start if it has size 0 since a Slice can't have length 0
       if (StringOrBufferLength(startBuffer) > 0) {
-        NL_STRING_OR_BUFFER_TO_MDVAL(_start, startBuffer, start)
-        start = new std::string((const char*)_start.mv_data, _start.mv_size);
+        LD_STRING_OR_BUFFER_TO_COPY(start, startBuffer, start)
       }
     }
 
-    if (optionsObj->Has(NanSymbol("end"))
-        && (node::Buffer::HasInstance(optionsObj->Get(NanSymbol("end")))
-          || optionsObj->Get(NanSymbol("end"))->IsString())) {
+    if (optionsObj->Has(Nan::New("end").ToLocalChecked())
+        && (node::Buffer::HasInstance(optionsObj->Get(Nan::New("end").ToLocalChecked()))
+          || optionsObj->Get(Nan::New("end").ToLocalChecked())->IsString())) {
 
-      v8::Local<v8::Value> endBuffer =
-          v8::Local<v8::Value>::New(optionsObj->Get(NanSymbol("end")));
+      v8::Local<v8::Value> endBuffer = optionsObj->Get(Nan::New("end").ToLocalChecked());
 
       // ignore end if it has size 0 since a Slice can't have length 0
       if (StringOrBufferLength(endBuffer) > 0) {
-        NL_STRING_OR_BUFFER_TO_MDVAL(_end, endBuffer, end)
-        end = new std::string((const char*)_end.mv_data, _end.mv_size);
+        LD_STRING_OR_BUFFER_TO_COPY(end, endBuffer, end)
       }
     }
 
-    if (!optionsObj.IsEmpty() && optionsObj->Has(NanSymbol("limit"))) {
-      limit =
-        v8::Local<v8::Integer>::Cast(optionsObj->Get(NanSymbol("limit")))->Value();
+    if (!optionsObj.IsEmpty() && optionsObj->Has(Nan::New("limit").ToLocalChecked())) {
+      limit = v8::Local<v8::Integer>::Cast(optionsObj->Get(
+          Nan::New("limit").ToLocalChecked()))->Value();
     }
+
+    if (optionsObj->Has(Nan::New("highWaterMark").ToLocalChecked())) {
+      highWaterMark = v8::Local<v8::Integer>::Cast(optionsObj->Get(
+            Nan::New("highWaterMark").ToLocalChecked()))->Value();
+    }
+
+    if (optionsObj->Has(Nan::New("lt").ToLocalChecked())
+        && (node::Buffer::HasInstance(optionsObj->Get(Nan::New("lt").ToLocalChecked()))
+          || optionsObj->Get(Nan::New("lt").ToLocalChecked())->IsString())) {
+
+      v8::Local<v8::Value> ltBuffer = optionsObj->Get(Nan::New("lt").ToLocalChecked());
+
+      // ignore end if it has size 0 since a Slice can't have length 0
+      if (StringOrBufferLength(ltBuffer) > 0) {
+        LD_STRING_OR_BUFFER_TO_COPY(lt, ltBuffer, lt)
+        if (reverse) {
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, lt);
+        }
+      }
+    }
+
+    if (optionsObj->Has(Nan::New("lte").ToLocalChecked())
+        && (node::Buffer::HasInstance(optionsObj->Get(Nan::New("lte").ToLocalChecked()))
+          || optionsObj->Get(Nan::New("lte").ToLocalChecked())->IsString())) {
+
+      v8::Local<v8::Value> lteBuffer = optionsObj->Get(Nan::New("lte").ToLocalChecked());
+
+      // ignore end if it has size 0 since a Slice can't have length 0
+      if (StringOrBufferLength(lteBuffer) > 0) {
+        LD_STRING_OR_BUFFER_TO_COPY(lte, lteBuffer, lte)
+        if (reverse) {
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, lte);
+        }
+      }
+    }
+
+    if (optionsObj->Has(Nan::New("gt").ToLocalChecked())
+        && (node::Buffer::HasInstance(optionsObj->Get(Nan::New("gt").ToLocalChecked()))
+          || optionsObj->Get(Nan::New("gt").ToLocalChecked())->IsString())) {
+
+      v8::Local<v8::Value> gtBuffer = optionsObj->Get(Nan::New("gt").ToLocalChecked());
+
+      // ignore end if it has size 0 since a Slice can't have length 0
+      if (StringOrBufferLength(gtBuffer) > 0) {
+        LD_STRING_OR_BUFFER_TO_COPY(gt, gtBuffer, gt)
+        if (!reverse) {
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, gt);
+        }
+      }
+    }
+
+    if (optionsObj->Has(Nan::New("gte").ToLocalChecked())
+        && (node::Buffer::HasInstance(optionsObj->Get(Nan::New("gte").ToLocalChecked()))
+          || optionsObj->Get(Nan::New("gte").ToLocalChecked())->IsString())) {
+
+      v8::Local<v8::Value> gteBuffer = optionsObj->Get(Nan::New("gte").ToLocalChecked());
+
+      // ignore end if it has size 0 since a Slice can't have length 0
+      if (StringOrBufferLength(gteBuffer) > 0) {
+        LD_STRING_OR_BUFFER_TO_COPY(gte, gteBuffer, gte)
+        if (!reverse) {
+          LD_FREE_COPY(start);
+          LD_CREATE_COPY(start, gte);
+        }
+      }
+    }
+
   }
 
-  bool reverse = NanBooleanOptionValue(optionsObj, NanSymbol("reverse"), false);
-  bool keys = NanBooleanOptionValue(optionsObj, NanSymbol("keys"), true);
-  bool values = NanBooleanOptionValue(optionsObj, NanSymbol("values"), true);
-  bool keyAsBuffer = NanBooleanOptionValue(
-      optionsObj
-    , NanSymbol("keyAsBuffer")
-    , true
-  );
-  bool valueAsBuffer = NanBooleanOptionValue(
-      optionsObj
-    , NanSymbol("valueAsBuffer")
-    , false
-  );
+  bool keys = BooleanOptionValue(optionsObj, "keys", true);
+  bool values = BooleanOptionValue(optionsObj, "values", true);
+  bool keyAsBuffer = BooleanOptionValue(optionsObj, "keyAsBuffer", true);
+  bool valueAsBuffer = BooleanOptionValue(optionsObj, "valueAsBuffer", true);
+  bool fillCache = BooleanOptionValue(optionsObj, "fillCache");
 
   Iterator* iterator = new Iterator(
       database
@@ -321,14 +528,18 @@ NAN_METHOD(Iterator::New) {
     , keys
     , values
     , limit
+    , lt
+    , lte
+    , gt
+    , gte
+    , fillCache
     , keyAsBuffer
     , valueAsBuffer
+    , highWaterMark
   );
-  iterator->Wrap(args.This());
+  iterator->Wrap(info.This());
 
-  //std::cerr << "New Iterator " << iterator->id << std::endl;
-
-  NanReturnValue(args.This());
+  info.GetReturnValue().Set(info.This());
 }
 
-} // namespace nlmdb
+} // namespace leveldown

@@ -1,4 +1,4 @@
-const test       = require('tap').test
+const test       = require('tape')
     , lmdb       = require('../')
     , testCommon = require('abstract-leveldown/testCommon')
 
@@ -34,7 +34,8 @@ test('test maxReaders increase', function (t) {
             //
             // This doesn't affect the test's validity, as the reader limit
             // is what counts here.
-            process.exit(0);
+            // process.exit(0);
+            t.end();
           })
         }
       }
