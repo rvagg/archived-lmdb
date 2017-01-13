@@ -17,6 +17,7 @@
 #include "common.h"
 
 #include <string.h>
+#include <sstream>
 
 namespace leveldown {
 
@@ -363,35 +364,43 @@ void Database::GetPropertyFromDatabase (
   MDB_envinfo info;
   int ret = mdb_env_info(env, &info);
 
+  std::string s;
+  std::stringstream ss;
+
   if (ret != 0)
     return;
 
   if (strcmp(property, "mdb.mapsize") == 0) {
-    std::string s = std::to_string((long long)info.me_mapsize);
+    ss << (long long)info.me_mapsize;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.last_pgno") == 0) {
-    std::string s = std::to_string((long long)info.me_last_pgno);
+    ss << (long long)info.me_last_pgno;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.last_txnid") == 0) {
-    std::string s = std::to_string((long long)info.me_last_txnid);
+    ss << (long long)info.me_last_txnid;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.maxreaders") == 0) {
-    std::string s = std::to_string(info.me_maxreaders);
+    ss << info.me_maxreaders;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.numreaders") == 0) {
-    std::string s = std::to_string(info.me_numreaders);
+    ss << info.me_numreaders;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
@@ -403,37 +412,43 @@ void Database::GetPropertyFromDatabase (
     return;
 
   if (strcmp(property, "mdb.psize") == 0) {
-    std::string s = std::to_string(stat.ms_psize);
+    ss << stat.ms_psize;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.depth") == 0) {
-    std::string s = std::to_string(stat.ms_depth);
+    ss << stat.ms_depth;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.branch_pages") == 0) {
-    std::string s = std::to_string((long long)stat.ms_branch_pages);
+    ss << (long long)stat.ms_branch_pages;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.leaf_pages") == 0) {
-    std::string s = std::to_string((long long)stat.ms_leaf_pages);
+    ss << (long long)stat.ms_leaf_pages;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.overflow_pages") == 0) {
-    std::string s = std::to_string((long long)stat.ms_overflow_pages);
+    ss << (long long)stat.ms_overflow_pages;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
 
   if (strcmp(property, "mdb.entries") == 0) {
-    std::string s = std::to_string((long long)stat.ms_entries);
+    ss << (long long)stat.ms_entries;
+    ss >> s;
     value->assign(s.data(), s.size());
     return;
   }
